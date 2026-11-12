@@ -29,6 +29,8 @@ function migrate(data) {
   if (!data || typeof data !== "object") data = {};
   if (!Array.isArray(data.modules)) data.modules = [];
   if (!Array.isArray(data.events)) data.events = [];
+  // Events gain an optional time ("HH:MM" or null).
+  data.events.forEach((e) => { if (e.time === undefined) e.time = null; });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
     if (m.grade === undefined) m.grade = null;
@@ -115,6 +117,10 @@ function isoOf(d) {
 }
 function todayIso() { return isoOf(new Date()); }
 function formatDate(iso) { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; }
+// Normalize a stored time to "HH:MM" or empty string.
+function formatTime(t) { return t ? t : ""; }
+// Sort key combining date + time so timed events order correctly within a day.
+function eventSortKey(e) { return e.date + "T" + (e.time || "99:99"); }
 
 // Whole-day difference between two YYYY-MM-DD strings (b - a), date-only.
 function daysBetween(aIso, bIso) {
@@ -155,17 +161,17 @@ function renderDashboard() {
   const { pct, weighted } = overallProgress();
   document.getElementById("overall-percent").textContent = pct + "%";
   document.getElementById("overall-bar").style.width = pct + "%";
-  document.getElementById("overall-mode").textContent = weighted ? "(ECTS-weighted)" : "";
+  document.getElementById("overall-mode").textContent = weighted ? "(ECTS-gewichtet)" : "";
 
   const completedCount = state.modules.filter((m) => m.completed).length;
   document.getElementById("overall-summary").textContent = state.modules.length
-    ? `${completedCount} of ${state.modules.length} module(s) completed. (Progress reflects completed modules only.)`
-    : "No modules yet — add one in the Modules tab to start tracking.";
+    ? `${completedCount} von ${state.modules.length} Modul(en) abgeschlossen. (Fortschritt zählt nur abgeschlossene Module.)`
+    : "Noch keine Module — füge im Tab „Module“ eins hinzu, um zu starten.";
 
   const gpa = computeGpa();
   document.getElementById("gpa-summary").textContent = gpa
-    ? `Average grade: ${gpa.value.toFixed(2)} (from ${gpa.count} graded module${gpa.count > 1 ? "s" : ""}${gpa.weighted ? ", ECTS-weighted" : ""}).`
-    : "No grades recorded yet.";
+    ? `Notendurchschnitt: ${gpa.value.toFixed(2)} (aus ${gpa.count} benoteten Modul${gpa.count > 1 ? "en" : ""}${gpa.weighted ? ", ECTS-gewichtet" : ""}).`
+    : "Noch keine Noten erfasst.";
 
   renderPinnedModules();
   renderPinnedTasks();
@@ -177,21 +183,22 @@ function renderCountdown() {
   const today = todayIso();
   const nextExam = state.events
     .filter((e) => e.type === "exam" && e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
+    .sort((a, b) => eventSortKey(a).localeCompare(eventSortKey(b)))[0];
 
   if (!nextExam) {
     card.className = "countdown-card none";
-    card.innerHTML = `<span>🎯 No upcoming exams scheduled. Add one in the Calendar.</span>`;
+    card.innerHTML = `<span>🎯 Keine anstehenden Prüfungen. Füge im Kalender eine hinzu.</span>`;
     return;
   }
   const days = daysBetween(today, nextExam.date);
-  const label = days === 0 ? "Today!" : days === 1 ? "1 day" : `${days} days`;
+  const label = days === 0 ? "Heute!" : days === 1 ? "1 Tag" : `${days} Tage`;
+  const timePart = nextExam.time ? ` · ${formatTime(nextExam.time)} Uhr` : "";
   card.className = "countdown-card";
   card.innerHTML = `
-    <div><div class="cd-days">${label}</div><div class="muted">until next exam</div></div>
+    <div><div class="cd-days">${label}</div><div class="muted">bis zur nächsten Prüfung</div></div>
     <div class="cd-info">
       <div class="cd-title">${escapeHtml(nextExam.title)}</div>
-      <div class="cd-date">${formatDate(nextExam.date)}</div>
+      <div class="cd-date">${formatDate(nextExam.date)}${timePart}</div>
     </div>`;
 }
 
@@ -200,15 +207,15 @@ function renderPinnedModules() {
   wrap.innerHTML = "";
   const pinned = state.modules.filter((m) => m.pinned);
   if (!pinned.length) {
-    wrap.innerHTML = `<p class="empty-state">No modules pinned. Pin the ones you're working on from the Modules tab.</p>`;
+    wrap.innerHTML = `<p class="empty-state">Keine Module angeheftet. Hefte im Tab „Module“ die an, an denen du arbeitest.</p>`;
     return;
   }
   pinned.forEach((m) => {
     const pct = moduleProgress(m);
     const bits = [];
     if (m.ects) bits.push(`${m.ects} ECTS`);
-    if (typeof m.grade === "number") bits.push(`grade ${m.grade}`);
-    if (m.completed) bits.push("✓ completed");
+    if (typeof m.grade === "number") bits.push(`Note ${m.grade}`);
+    if (m.completed) bits.push("✓ abgeschlossen");
     const div = document.createElement("div");
     div.className = "module-progress-item";
     div.innerHTML = `
@@ -232,7 +239,7 @@ function renderPinnedTasks() {
     .filter((g) => g.tasks.length > 0);
 
   if (!groups.length) {
-    list.innerHTML = `<p class="empty-state">No tasks scheduled for today. Give a task a date in Modules or plan it in the Calendar.</p>`;
+    list.innerHTML = `<p class="empty-state">Heute keine Aufgaben geplant. Gib einer Aufgabe in „Module“ ein Datum oder plane sie im Kalender.</p>`;
     return;
   }
 
@@ -294,17 +301,18 @@ function renderUpcoming() {
   const today = todayIso();
   const upcoming = state.events
     .filter((e) => e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))
+    .sort((a, b) => eventSortKey(a).localeCompare(eventSortKey(b)))
     .slice(0, 6);
   if (!upcoming.length) {
-    list.innerHTML = `<p class="empty-state">No upcoming entries.</p>`;
+    list.innerHTML = `<p class="empty-state">Keine anstehenden Einträge.</p>`;
     return;
   }
   upcoming.forEach((e) => {
     const li = document.createElement("li");
+    const when = e.time ? `${formatDate(e.date)} · ${formatTime(e.time)} Uhr` : formatDate(e.date);
     li.innerHTML = `
-      <span>${escapeHtml(e.title)} <span class="tag ${e.type}">${e.type}</span></span>
-      <span class="ev-date">${formatDate(e.date)}</span>`;
+      <span>${escapeHtml(e.title)} <span class="tag ${e.type}">${typeLabel(e.type)}</span></span>
+      <span class="ev-date">${when}</span>`;
     list.appendChild(li);
   });
 }
@@ -322,15 +330,19 @@ function initCalendarState() {
   if (!selectedDate) selectedDate = todayIso();
 }
 
-const MONTHS = ["January","February","March","April","May","June",
-  "July","August","September","October","November","December"];
+const MONTHS = ["Januar","Februar","März","April","Mai","Juni",
+  "Juli","August","September","Oktober","November","Dezember"];
+
+// German labels for event types (stored values stay English for compatibility).
+const TYPE_LABELS = { exam: "Prüfung", deadline: "Abgabe", lecture: "Vorlesung", other: "Sonstiges", task: "Aufgabe" };
+function typeLabel(t) { return TYPE_LABELS[t] || t; }
 
 function renderCalendar() {
   if (calYear === undefined) initCalendarState();
 
   document.getElementById("calendar-title").textContent = `${MONTHS[calMonth]} ${calYear}`;
   document.getElementById("selected-day-label").textContent =
-    selectedDate ? `Selected: ${formatDate(selectedDate)}` : "";
+    selectedDate ? `Ausgewählt: ${formatDate(selectedDate)}` : "";
 
   const grid = document.getElementById("calendar-grid");
   grid.innerHTML = "";
@@ -354,14 +366,18 @@ function renderCalendar() {
       + (dateStr === selectedDate ? " selected" : "");
     cell.innerHTML = `<span class="day-num">${day}</span>`;
 
-    // Calendar events on this day
+    // Calendar events on this day (timed first, ordered by time)
     const dayItems = [];
-    state.events.filter((e) => e.date === dateStr).forEach((e) => {
-      dayItems.push({ kind: "event", type: e.type, label: e.title });
-    });
+    state.events
+      .filter((e) => e.date === dateStr)
+      .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"))
+      .forEach((e) => {
+        const prefix = e.time ? `${formatTime(e.time)} ` : "";
+        dayItems.push({ type: e.type, label: `${prefix}${e.title}` });
+      });
     // Scheduled module tasks on this day
     tasksOnDate(dateStr).forEach(({ module, task }) => {
-      dayItems.push({ kind: "task", type: "task", label: `${task.text} · ${module.name}` });
+      dayItems.push({ type: "task", label: `${task.text} · ${module.name}` });
     });
     dayItems.slice(0, 3).forEach((it) => {
       const ev = document.createElement("div");
@@ -373,7 +389,7 @@ function renderCalendar() {
     if (dayItems.length > 3) {
       const more = document.createElement("div");
       more.className = "cal-more";
-      more.textContent = `+${dayItems.length - 3} more`;
+      more.textContent = `+${dayItems.length - 3} weitere`;
       cell.appendChild(more);
     }
 
@@ -392,22 +408,23 @@ function renderDayDetail() {
   if (!selectedDate) { wrap.innerHTML = ""; return; }
   const dayEvents = state.events
     .filter((e) => e.date === selectedDate)
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99") || a.title.localeCompare(b.title));
 
   const dayTasks = tasksOnDate(selectedDate);
 
   let html = `<h3>${formatDate(selectedDate)}</h3>`;
 
   if (!dayEvents.length && !dayTasks.length) {
-    html += `<p class="muted">Nothing scheduled. Add a calendar entry below, or plan a module task for this day.</p>`;
+    html += `<p class="muted">Nichts geplant. Füge unten einen Kalendereintrag hinzu oder plane eine Modulaufgabe für diesen Tag.</p>`;
   }
 
   // Calendar events
   dayEvents.forEach((e) => {
+    const timePart = e.time ? `<span class="d-time">${formatTime(e.time)} Uhr</span> ` : "";
     html += `
       <div class="d-event">
-        <span class="d-left"><span class="tag ${e.type}">${e.type}</span> ${escapeHtml(e.title)}</span>
-        <button class="del-btn" data-del-event="${e.id}" title="Delete">✕</button>
+        <span class="d-left"><span class="tag ${e.type}">${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}</span>
+        <button class="del-btn" data-del-event="${e.id}" title="Löschen">✕</button>
       </div>`;
   });
 
@@ -417,14 +434,14 @@ function renderDayDetail() {
       <div class="d-event d-task">
         <span class="d-left">
           <input type="checkbox" data-task-done="${task.id}" ${task.done ? "checked" : ""} />
-          <span class="tag task">task</span>
+          <span class="tag task">Aufgabe</span>
           <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>
         </span>
-        <button class="del-btn" data-unplan="${task.id}" title="Remove from this day">✕</button>
+        <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen">✕</button>
       </div>`;
   });
 
-  // "Plan a task" picker — list unscheduled tasks to assign to this day.
+  // "Aufgabe planen" — Auswahl nicht terminierter Aufgaben für diesen Tag.
   const unscheduled = [];
   state.modules.forEach((m) => {
     m.tasks.forEach((t) => { if (t.date !== selectedDate) unscheduled.push({ m, t }); });
@@ -433,11 +450,11 @@ function renderDayDetail() {
     html += `
       <form class="plan-task-form">
         <select data-plan-select>
-          <option value="">Plan a module task for this day…</option>
+          <option value="">Modulaufgabe für diesen Tag planen …</option>
           ${unscheduled.map(({ m, t }) =>
             `<option value="${t.id}">${escapeHtml(m.name)} — ${escapeHtml(t.text)}</option>`).join("")}
         </select>
-        <button type="submit" class="secondary-btn">Plan</button>
+        <button type="submit" class="secondary-btn">Planen</button>
       </form>`;
   }
 
@@ -528,16 +545,18 @@ document.getElementById("today-btn").addEventListener("click", () => {
 document.getElementById("event-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const date = document.getElementById("event-date").value;
+  const time = document.getElementById("event-time").value || null;
   const title = document.getElementById("event-title").value.trim();
   const type = document.getElementById("event-type").value;
   if (!date || !title) return;
-  state.events.push({ id: uid(), date, title, type });
+  state.events.push({ id: uid(), date, time, title, type });
   saveState();
   selectedDate = date;
   const d = new Date(date + "T00:00:00");
   calYear = d.getFullYear();
   calMonth = d.getMonth();
   document.getElementById("event-title").value = "";
+  document.getElementById("event-time").value = "";
   renderCalendar();
 });
 
@@ -560,19 +579,19 @@ function renderModules() {
   wrap.innerHTML = "";
 
   if (!state.modules.length) {
-    wrap.innerHTML = `<p class="empty-state">No modules yet. Add your first one above.</p>`;
+    wrap.innerHTML = `<p class="empty-state">Noch keine Module. Füge oben dein erstes hinzu.</p>`;
     return;
   }
 
-  // Three sections: Ongoing (pinned, not finished), Upcoming (rest), Finished.
+  // Drei Bereiche: In Bearbeitung (angeheftet), Demnächst (Rest), Abgeschlossen.
   const ongoing = state.modules.filter((m) => m.pinned && !m.completed);
   const upcoming = state.modules.filter((m) => !m.pinned && !m.completed);
   const finished = state.modules.filter((m) => m.completed);
 
   const sections = [
-    { title: "Ongoing", hint: "Pinned modules you're working on", items: ongoing },
-    { title: "Upcoming", hint: "Not started / not pinned", items: upcoming },
-    { title: "Finished", hint: "Completed modules", items: finished },
+    { title: "In Bearbeitung", hint: "Angeheftete Module, an denen du arbeitest", items: ongoing },
+    { title: "Demnächst", hint: "Nicht begonnen / nicht angeheftet", items: upcoming },
+    { title: "Abgeschlossen", hint: "Fertige Module", items: finished },
   ];
 
   sections.forEach((sec) => {
@@ -594,26 +613,26 @@ function renderModuleCard(m) {
   card.innerHTML = `
     <div class="module-head">
       <h3>
-        <button class="collapse-btn" data-collapse title="${m.collapsed ? "Expand" : "Collapse"}">${m.collapsed ? "▸" : "▾"}</button>
+        <button class="collapse-btn" data-collapse title="${m.collapsed ? "Ausklappen" : "Einklappen"}">${m.collapsed ? "▸" : "▾"}</button>
         ${escapeHtml(m.name)}
         ${m.ects ? `<span class="badge">${m.ects} ECTS</span>` : ""}
-        ${m.completed ? `<span class="badge done">✓ done</span>` : ""}
+        ${m.completed ? `<span class="badge done">✓ fertig</span>` : ""}
       </h3>
       <div class="module-actions">
         <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
-        <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Mark as ongoing (pin)">📌</button>
-        <button class="del-btn" data-del-module title="Delete module">🗑</button>
+        <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Als „In Bearbeitung“ markieren (anheften)">📌</button>
+        <button class="del-btn" data-del-module title="Modul löschen">🗑</button>
       </div>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="module-body">
       <div class="module-controls">
-        <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Completed</label>
-        <label>Grade: <input type="number" class="grade-input" data-grade step="0.1" placeholder="—" value="${m.grade ?? ""}"/></label>
+        <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Abgeschlossen</label>
+        <label>Note: <input type="number" class="grade-input" data-grade step="0.1" placeholder="—" value="${m.grade ?? ""}"/></label>
         <label>ECTS: <input type="number" class="grade-input" data-ects step="0.5" min="0" placeholder="0" value="${m.ects || ""}"/></label>
       </div>
       <ul class="checklist"></ul>
-      <form class="add-task-form"><input type="text" placeholder="New checklist item…" required /><button type="submit" class="primary-btn">Add</button></form>
+      <form class="add-task-form"><input type="text" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
     </div>`;
 
   // Collapse/expand toggle
@@ -634,11 +653,11 @@ function renderModuleCard(m) {
       <div class="task-row">
         <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
         <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
-        <input type="date" class="task-date" data-date value="${t.date || ""}" title="Schedule this task (shows in Calendar & Today's Focus)" />
-        <button class="del-btn" data-del-task title="Delete item">✕</button>
+        <input type="date" class="task-date" data-date value="${t.date || ""}" title="Aufgabe terminieren (erscheint im Kalender & im Fokus heute)" />
+        <button class="del-btn" data-del-task title="Eintrag löschen">✕</button>
       </div>
       <ul class="subtask-list"></ul>
-      <form class="add-subtask-form"><input type="text" placeholder="Add a subtask…" required /><button type="submit" class="secondary-btn">+</button></form>`;
+      <form class="add-subtask-form"><input type="text" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
 
     // Subtasks
     const subUl = li.querySelector(".subtask-list");
@@ -648,7 +667,7 @@ function renderModuleCard(m) {
       sli.innerHTML = `
         <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
         <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>
-        <button class="del-btn" title="Delete subtask">✕</button>`;
+        <button class="del-btn" title="Teilaufgabe löschen">✕</button>`;
       sli.querySelector("input").addEventListener("change", (ev) => {
         s.done = ev.target.checked;
         if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
@@ -713,7 +732,7 @@ function renderModuleCard(m) {
     m.pinned = !m.pinned; saveState(); renderModules();
   });
   card.querySelector("[data-del-module]").addEventListener("click", () => {
-    if (confirm(`Delete module "${m.name}" and all its tasks?`)) {
+    if (confirm(`Modul „${m.name}“ und alle zugehörigen Aufgaben löschen?`)) {
       state.modules = state.modules.filter((x) => x.id !== m.id);
       saveState(); renderModules();
     }
@@ -737,7 +756,7 @@ document.getElementById("export-btn").addEventListener("click", () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  setStatus("Exported your data as a .json file.");
+  setStatus("Daten als .json-Datei exportiert.");
 });
 
 document.getElementById("import-file").addEventListener("change", (e) => {
@@ -748,9 +767,9 @@ document.getElementById("import-file").addEventListener("change", (e) => {
     try {
       const parsed = JSON.parse(ev.target.result);
       if (!parsed || !Array.isArray(parsed.modules) || !Array.isArray(parsed.events)) {
-        throw new Error("File doesn't look like a Study Tracker backup.");
+        throw new Error("Die Datei sieht nicht wie eine Studien-Tracker-Sicherung aus.");
       }
-      if (!confirm("Importing will replace your current data. Continue?")) return;
+      if (!confirm("Beim Import werden deine aktuellen Daten ersetzt. Fortfahren?")) return;
       state = migrate(parsed);
       saveState();
       // Restore study stats and timer settings if present in the backup.
@@ -773,9 +792,9 @@ document.getElementById("import-file").addEventListener("change", (e) => {
       }
       renderDashboard(); renderCalendar(); renderModules();
       renderStudyStats(); pomoRender();
-      setStatus("Import successful — your data has been restored.");
+      setStatus("Import erfolgreich — deine Daten wurden wiederhergestellt.");
     } catch (err) {
-      setStatus("Import failed: " + err.message, true);
+      setStatus("Import fehlgeschlagen: " + err.message, true);
     }
   };
   reader.readAsText(file);
@@ -783,7 +802,7 @@ document.getElementById("import-file").addEventListener("change", (e) => {
 });
 
 document.getElementById("reset-btn").addEventListener("click", () => {
-  if (!confirm("Delete ALL data permanently? This cannot be undone.")) return;
+  if (!confirm("ALLE Daten dauerhaft löschen? Das kann nicht rückgängig gemacht werden.")) return;
   state = { modules: [], events: [] };
   saveState();
   stats = { sessions: 0, daily: {} };
@@ -791,7 +810,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   saveStats();
   renderDashboard(); renderCalendar(); renderModules();
   renderStudyStats(); pomoRender();
-  setStatus("All data deleted.");
+  setStatus("Alle Daten gelöscht.");
 });
 
 function setStatus(msg, isError) {
@@ -805,7 +824,7 @@ function setStatus(msg, isError) {
    ============================================================ */
 const POMO_KEY = "study-tracker-pomodoro";
 const POMO_DEFAULTS = { focus: 25, short: 5, long: 15 }; // minutes
-const POMO_LABELS = { focus: "Focus", short: "Short break", long: "Long break" };
+const POMO_LABELS = { focus: "Fokus", short: "Kurze Pause", long: "Lange Pause" };
 
 // Durations persist across reloads; values are in minutes.
 let pomoMinutes = loadPomoMinutes();
@@ -871,14 +890,14 @@ function pomoFormat(sec) {
 
 function pomoRender() {
   document.getElementById("pomo-time").textContent = pomoFormat(pomoRemaining);
-  document.getElementById("pomo-count").textContent = `Completed focus sessions: ${pomoSessions}`;
+  document.getElementById("pomo-count").textContent = `Abgeschlossene Fokus-Einheiten: ${pomoSessions}`;
   document.getElementById("pomo-start").textContent = pomoTimerId ? "Pause" : "Start";
   document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
     b.classList.toggle("active", b.dataset.pomoMode === pomoMode);
   });
   document.title = pomoTimerId
-    ? `${pomoFormat(pomoRemaining)} · ${POMO_LABELS[pomoMode]} — Study Tracker`
-    : "Study Tracker";
+    ? `${pomoFormat(pomoRemaining)} · ${POMO_LABELS[pomoMode]} — Studien-Tracker`
+    : "Studien-Tracker";
 }
 
 function pomoStop() {
@@ -923,7 +942,7 @@ function pomoTick() {
       osc.start();
       setTimeout(() => { osc.stop(); ctx.close(); }, 450);
     } catch (e) {}
-    alert(`${POMO_LABELS[pomoMode]} finished!`);
+    alert(`${POMO_LABELS[pomoMode]} beendet!`);
     pomoSetMode(pomoMode === "focus" ? "short" : "focus");
     return;
   }
@@ -994,9 +1013,9 @@ function renderStudyToday() {
   document.getElementById("study-today").textContent = formatHm(stats.daily[todayIso()] || 0);
 }
 
-// Short, readable label for the reference day, e.g. "Today" or "12.11.2026".
+// Kurzes Label für den Bezugstag, z. B. "Heute" oder "12.11.2026".
 function refDayLabel() {
-  if (statsRefDate === todayIso()) return "Today";
+  if (statsRefDate === todayIso()) return "Heute";
   return formatDate(statsRefDate);
 }
 
@@ -1027,10 +1046,10 @@ function renderStudyStats() {
   // Each bar is filled relative to a sensible reference max (in seconds):
   //   day ~ 8h, week ~ 40h, month ~ 160h, year ~ 1000h. Caps at 100%.
   const rows = [
-    { label: "Day", sub: refDayLabel(), sec: daySec, max: 8 * 3600, cls: "" },
-    { label: "Week", sub: `${formatDate(weekStartIso)} – ${formatDate(weekEndIso)}`, sec: weekSec, max: 40 * 3600, cls: "week" },
-    { label: "Month", sub: `${monthName} ${year}`, sec: monthSec, max: 160 * 3600, cls: "month" },
-    { label: "Year", sub: year, sec: yearSec, max: 1000 * 3600, cls: "year" },
+    { label: "Tag", sub: refDayLabel(), sec: daySec, max: 8 * 3600, cls: "" },
+    { label: "Woche", sub: `${formatDate(weekStartIso)} – ${formatDate(weekEndIso)}`, sec: weekSec, max: 40 * 3600, cls: "week" },
+    { label: "Monat", sub: `${monthName} ${year}`, sec: monthSec, max: 160 * 3600, cls: "month" },
+    { label: "Jahr", sub: year, sec: yearSec, max: 1000 * 3600, cls: "year" },
   ];
 
   document.getElementById("stats-ref-label").textContent = refDayLabel();
@@ -1085,7 +1104,7 @@ document.getElementById("pomo-settings").addEventListener("submit", (e) => {
   pomoRemaining = pomoSeconds(pomoMode); // apply to the current mode immediately
   pomoRender();
   const el = document.getElementById("pomo-status");
-  el.textContent = `Saved — focus ${pomoMinutes.focus}m, short ${pomoMinutes.short}m, long ${pomoMinutes.long}m.`;
+  el.textContent = `Gespeichert — Fokus ${pomoMinutes.focus} Min., kurze Pause ${pomoMinutes.short} Min., lange Pause ${pomoMinutes.long} Min.`;
 });
 
 /* ---------- Utilities ---------- */

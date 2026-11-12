@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Study Tracker</title>
+  <title>Studien-Tracker</title>
 
-  <!-- Installable web app (Add to Home Screen on iPhone) -->
+  <!-- Installierbare Web-App (zum Home-Bildschirm hinzufügen auf dem iPhone) -->
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#4f46e5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Study Tracker" />
+  <meta name="apple-mobile-web-app-title" content="Studien-Tracker" />
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
 
@@ -19,26 +19,26 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h1 class="brand">🎓 Study<br />Tracker</h1>
+      <h1 class="brand">🎓 Studien-<br />Tracker</h1>
       <nav class="tabs">
-        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button class="tab-btn" data-tab="calendar">Calendar</button>
-        <button class="tab-btn" data-tab="modules">Modules</button>
+        <button class="tab-btn active" data-tab="dashboard">Übersicht</button>
+        <button class="tab-btn" data-tab="calendar">Kalender</button>
+        <button class="tab-btn" data-tab="modules">Module</button>
         <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
-        <button class="tab-btn" data-tab="data">Data</button>
+        <button class="tab-btn" data-tab="data">Daten</button>
       </nav>
     </aside>
 
     <main>
-    <!-- DASHBOARD -->
+    <!-- ÜBERSICHT -->
     <section id="dashboard" class="tab-panel active">
-      <!-- Exam countdown -->
+      <!-- Prüfungs-Countdown -->
       <div id="countdown-card" class="countdown-card"></div>
 
-      <h2>Overall Progress</h2>
+      <h2>Gesamtfortschritt</h2>
       <div class="progress-card">
         <div class="progress-label">
-          <span>Total study progress <span id="overall-mode" class="muted-inline"></span></span>
+          <span>Gesamter Studienfortschritt <span id="overall-mode" class="muted-inline"></span></span>
           <span id="overall-percent">0%</span>
         </div>
         <div class="progress-bar big">
@@ -48,141 +48,142 @@
         <p id="gpa-summary" class="muted"></p>
       </div>
 
-      <h2>Currently Working On</h2>
+      <h2>Aktuell in Bearbeitung</h2>
       <div id="pinned-modules" class="module-progress-list"></div>
 
-      <h2>Today's Focus</h2>
+      <h2>Fokus heute</h2>
       <ul id="pinned-tasks" class="focus-list"></ul>
 
-      <h2>Upcoming</h2>
+      <h2>Demnächst</h2>
       <ul id="upcoming-events" class="upcoming-list"></ul>
     </section>
 
-    <!-- CALENDAR -->
+    <!-- KALENDER -->
     <section id="calendar" class="tab-panel">
       <div class="calendar-controls">
         <div class="nav-group">
-          <button id="prev-month" class="icon-btn" title="Previous month">«</button>
-          <button id="prev-day" class="icon-btn" title="Previous day">‹</button>
+          <button id="prev-month" class="icon-btn" title="Vorheriger Monat">«</button>
+          <button id="prev-day" class="icon-btn" title="Vorheriger Tag">‹</button>
         </div>
         <h2 id="calendar-title"></h2>
         <div class="nav-group">
-          <button id="next-day" class="icon-btn" title="Next day">›</button>
-          <button id="next-month" class="icon-btn" title="Next month">»</button>
+          <button id="next-day" class="icon-btn" title="Nächster Tag">›</button>
+          <button id="next-month" class="icon-btn" title="Nächster Monat">»</button>
         </div>
       </div>
       <div class="calendar-sub">
-        <button id="today-btn" class="ghost-btn">Today</button>
+        <button id="today-btn" class="ghost-btn">Heute</button>
         <span id="selected-day-label" class="muted"></span>
       </div>
 
       <div class="calendar-weekdays">
-        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
-        <span>Fri</span><span>Sat</span><span>Sun</span>
+        <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
+        <span>Fr</span><span>Sa</span><span>So</span>
       </div>
       <div id="calendar-grid" class="calendar-grid"></div>
 
-      <!-- Selected day detail -->
+      <!-- Detail des ausgewählten Tages -->
       <div id="day-detail" class="day-detail"></div>
 
       <div class="event-form-wrap">
-        <h3>Add an entry</h3>
+        <h3>Eintrag hinzufügen</h3>
         <form id="event-form" class="event-form">
           <input type="date" id="event-date" required />
-          <input type="text" id="event-title" placeholder="e.g. Math exam" required />
+          <input type="time" id="event-time" title="Uhrzeit (optional)" />
+          <input type="text" id="event-title" placeholder="z. B. Mathe-Prüfung" required />
           <select id="event-type">
-            <option value="exam">Exam</option>
-            <option value="deadline">Deadline</option>
-            <option value="lecture">Lecture</option>
-            <option value="other">Other</option>
+            <option value="exam">Prüfung</option>
+            <option value="deadline">Abgabe</option>
+            <option value="lecture">Vorlesung</option>
+            <option value="other">Sonstiges</option>
           </select>
-          <button type="submit" class="primary-btn">Add</button>
+          <button type="submit" class="primary-btn">Hinzufügen</button>
         </form>
       </div>
     </section>
 
-    <!-- MODULES -->
+    <!-- MODULE -->
     <section id="modules" class="tab-panel">
       <form id="module-form" class="inline-form">
-        <input type="text" id="module-name" placeholder="New module name (e.g. Linear Algebra)" required />
+        <input type="text" id="module-name" placeholder="Neuer Modulname (z. B. Lineare Algebra)" required />
         <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
-        <button type="submit" class="primary-btn">Add module</button>
+        <button type="submit" class="primary-btn">Modul hinzufügen</button>
       </form>
       <div id="modules-list" class="modules-list"></div>
     </section>
 
     <!-- POMODORO -->
     <section id="pomodoro" class="tab-panel">
-      <h2>Focus Timer</h2>
+      <h2>Fokus-Timer</h2>
       <div class="pomodoro-card">
         <div class="pomo-mode-tabs">
-          <button data-pomo-mode="focus" class="active">Focus</button>
-          <button data-pomo-mode="short">Short break</button>
-          <button data-pomo-mode="long">Long break</button>
+          <button data-pomo-mode="focus" class="active">Fokus</button>
+          <button data-pomo-mode="short">Kurze Pause</button>
+          <button data-pomo-mode="long">Lange Pause</button>
         </div>
         <div id="pomo-time" class="pomo-time">25:00</div>
         <div class="pomo-controls">
           <button id="pomo-start" class="primary-btn">Start</button>
-          <button id="pomo-reset" class="secondary-btn">Reset</button>
+          <button id="pomo-reset" class="secondary-btn">Zurücksetzen</button>
         </div>
-        <div id="pomo-count" class="pomo-count">Completed focus sessions: 0</div>
+        <div id="pomo-count" class="pomo-count">Abgeschlossene Fokus-Einheiten: 0</div>
       </div>
 
-      <h2>Study Time</h2>
+      <h2>Lernzeit</h2>
       <div class="pomodoro-card studytime-card">
         <div class="today-time">
-          <span class="muted">Studied today</span>
+          <span class="muted">Heute gelernt</span>
           <span id="study-today" class="today-value">0h 00m</span>
         </div>
         <div class="stats-nav">
-          <button id="stats-prev" class="icon-btn" title="Previous day">‹</button>
-          <span id="stats-ref-label" class="stats-ref-label">Today</span>
-          <button id="stats-next" class="icon-btn" title="Next day">›</button>
-          <button id="stats-today" class="ghost-btn">Today</button>
+          <button id="stats-prev" class="icon-btn" title="Vorheriger Tag">‹</button>
+          <span id="stats-ref-label" class="stats-ref-label">Heute</span>
+          <button id="stats-next" class="icon-btn" title="Nächster Tag">›</button>
+          <button id="stats-today" class="ghost-btn">Heute</button>
         </div>
         <div id="study-stats" class="study-stats"></div>
-        <p class="muted study-note">Focus-timer minutes are counted as study time. Breaks are not. Use ‹ › to view other days.</p>
+        <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen.</p>
       </div>
 
-      <h2>Custom Durations</h2>
-      <p class="muted">Set your own lengths in minutes. Changes apply right away and are saved.</p>
+      <h2>Eigene Zeiten</h2>
+      <p class="muted">Lege eigene Längen in Minuten fest. Änderungen gelten sofort und werden gespeichert.</p>
       <form id="pomo-settings" class="pomo-settings">
-        <label>Focus
+        <label>Fokus
           <input type="number" id="dur-focus" min="1" max="180" step="1" />
         </label>
-        <label>Short break
+        <label>Kurze Pause
           <input type="number" id="dur-short" min="1" max="60" step="1" />
         </label>
-        <label>Long break
+        <label>Lange Pause
           <input type="number" id="dur-long" min="1" max="120" step="1" />
         </label>
-        <button type="submit" class="primary-btn">Save durations</button>
+        <button type="submit" class="primary-btn">Zeiten speichern</button>
       </form>
       <p id="pomo-status" class="muted"></p>
     </section>
 
-    <!-- DATA -->
+    <!-- DATEN -->
     <section id="data" class="tab-panel">
-      <h2>Backup &amp; Restore</h2>
-      <p class="muted">Your data lives only in this browser. Export it to keep a backup or move it to another device.</p>
+      <h2>Sicherung &amp; Wiederherstellung</h2>
+      <p class="muted">Deine Daten liegen nur in diesem Browser. Exportiere sie als Sicherung oder um sie auf ein anderes Gerät zu übertragen.</p>
       <div class="data-actions">
-        <button id="export-btn" class="primary-btn">⬇ Export data (.json)</button>
+        <button id="export-btn" class="primary-btn">⬇ Daten exportieren (.json)</button>
         <label class="primary-btn file-label">
-          ⬆ Import data
+          ⬆ Daten importieren
           <input type="file" id="import-file" accept="application/json,.json" hidden />
         </label>
       </div>
       <p id="data-status" class="muted"></p>
-      <h2>Reset</h2>
-      <p class="muted">Permanently delete everything stored in this browser.</p>
-      <button id="reset-btn" class="danger-btn">Delete all data</button>
+      <h2>Zurücksetzen</h2>
+      <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
+      <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
     </section>
     </main>
   </div>
 
   <script src="app.js"></script>
   <script>
-    // Register the service worker so the app works offline once installed.
+    // Service Worker registrieren, damit die App installiert offline funktioniert.
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").catch(() => {});

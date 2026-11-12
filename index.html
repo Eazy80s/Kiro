@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Study Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>🎓 Study Tracker</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="calendar">Calendar</button>
+      <button class="tab-btn" data-tab="modules">Modules</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="tab-panel active">
+      <h2>Overall Progress</h2>
+      <div class="progress-card">
+        <div class="progress-label">
+          <span>Total study progress</span>
+          <span id="overall-percent">0%</span>
+        </div>
+        <div class="progress-bar big">
+          <div id="overall-bar" class="progress-fill" style="width:0%"></div>
+        </div>
+        <p id="overall-summary" class="muted"></p>
+      </div>
+
+      <h2>Module Progress</h2>
+      <div id="dashboard-modules" class="module-progress-list"></div>
+
+      <h2>Upcoming</h2>
+      <ul id="upcoming-events" class="upcoming-list"></ul>
+    </section>
+
+    <!-- CALENDAR -->
+    <section id="calendar" class="tab-panel">
+      <div class="calendar-controls">
+        <button id="prev-month" class="icon-btn">‹</button>
+        <h2 id="calendar-title"></h2>
+        <button id="next-month" class="icon-btn">›</button>
+      </div>
+      <div class="calendar-weekdays">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+        <span>Fri</span><span>Sat</span><span>Sun</span>
+      </div>
+      <div id="calendar-grid" class="calendar-grid"></div>
+
+      <div class="event-form-wrap">
+        <h3>Add an entry</h3>
+        <form id="event-form" class="event-form">
+          <input type="date" id="event-date" required />
+          <input type="text" id="event-title" placeholder="e.g. Math exam" required />
+          <select id="event-type">
+            <option value="exam">Exam</option>
+            <option value="deadline">Deadline</option>
+            <option value="lecture">Lecture</option>
+            <option value="other">Other</option>
+          </select>
+          <button type="submit" class="primary-btn">Add</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- MODULES -->
+    <section id="modules" class="tab-panel">
+      <form id="module-form" class="inline-form">
+        <input type="text" id="module-name" placeholder="New module name (e.g. Linear Algebra)" required />
+        <button type="submit" class="primary-btn">Add module</button>
+      </form>
+      <div id="modules-list" class="modules-list"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

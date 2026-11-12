@@ -54,11 +54,22 @@ function uid() {
 }
 
 /* ---------- Progress helpers ---------- */
+// A task with subtasks contributes fractionally (share of its subtasks done);
+// a task without subtasks contributes 1 when done, 0 otherwise. The module
+// percentage is the average completion across all its tasks.
+function taskCompletion(t) {
+  if (t.subtasks && t.subtasks.length) {
+    const done = t.subtasks.filter((s) => s.done).length;
+    return done / t.subtasks.length;
+  }
+  return t.done ? 1 : 0;
+}
+
 function moduleProgress(module) {
   if (module.completed) return 100;
   if (!module.tasks.length) return 0;
-  const done = module.tasks.filter((t) => t.done).length;
-  return Math.round((done / module.tasks.length) * 100);
+  const sum = module.tasks.reduce((a, t) => a + taskCompletion(t), 0);
+  return Math.round((sum / module.tasks.length) * 100);
 }
 
 // Overall study progress is driven ONLY by completed modules — checklist tasks
@@ -112,6 +123,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "dashboard") renderDashboard();
     if (btn.dataset.tab === "calendar") renderCalendar();
     if (btn.dataset.tab === "modules") renderModules();
+    if (btn.dataset.tab === "pomodoro") renderStudyStats();
   });
 });
 
@@ -557,7 +569,9 @@ function renderModules() {
    DATA: export / import / reset
    ============================================================ */
 document.getElementById("export-btn").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  // Bundle everything so a backup also carries study time + timer settings.
+  const payload = { ...state, _stats: stats, _pomodoro: pomoMinutes };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -582,7 +596,26 @@ document.getElementById("import-file").addEventListener("change", (e) => {
       if (!confirm("Importing will replace your current data. Continue?")) return;
       state = migrate(parsed);
       saveState();
+      // Restore study stats and timer settings if present in the backup.
+      if (parsed._stats && typeof parsed._stats === "object") {
+        stats = {
+          sessions: Number(parsed._stats.sessions) || 0,
+          daily: (parsed._stats.daily && typeof parsed._stats.daily === "object") ? parsed._stats.daily : {},
+        };
+        pomoSessions = stats.sessions;
+        saveStats();
+      }
+      if (parsed._pomodoro && typeof parsed._pomodoro === "object") {
+        pomoMinutes = {
+          focus: clampMin(parsed._pomodoro.focus, POMO_DEFAULTS.focus),
+          short: clampMin(parsed._pomodoro.short, POMO_DEFAULTS.short),
+          long: clampMin(parsed._pomodoro.long, POMO_DEFAULTS.long),
+        };
+        savePomoMinutes();
+        pomoFillSettings();
+      }
       renderDashboard(); renderCalendar(); renderModules();
+      renderStudyStats(); pomoRender();
       setStatus("Import successful — your data has been restored.");
     } catch (err) {
       setStatus("Import failed: " + err.message, true);
@@ -596,7 +629,11 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   if (!confirm("Delete ALL data permanently? This cannot be undone.")) return;
   state = { modules: [], events: [] };
   saveState();
+  stats = { sessions: 0, daily: {} };
+  pomoSessions = 0;
+  saveStats();
   renderDashboard(); renderCalendar(); renderModules();
+  renderStudyStats(); pomoRender();
   setStatus("All data deleted.");
 });
 
@@ -636,10 +673,35 @@ function clampMin(v, fallback) {
 function savePomoMinutes() { localStorage.setItem(POMO_KEY, JSON.stringify(pomoMinutes)); }
 function pomoSeconds(mode) { return pomoMinutes[mode] * 60; }
 
+/* ----- Persisted study stats: session count + per-day study seconds ----- */
+const STATS_KEY = "study-tracker-stats";
+let stats = loadStats();
+function loadStats() {
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (typeof s.sessions !== "number") s.sessions = 0;
+      if (!s.daily || typeof s.daily !== "object") s.daily = {};
+      return s;
+    }
+  } catch (e) {}
+  return { sessions: 0, daily: {} }; // daily: { "YYYY-MM-DD": secondsStudied }
+}
+function saveStats() { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }
+
+// Add studied seconds to today's tally.
+function addStudySeconds(sec) {
+  if (sec <= 0) return;
+  const d = todayIso();
+  stats.daily[d] = (stats.daily[d] || 0) + sec;
+  saveStats();
+}
+
 let pomoMode = "focus";
 let pomoRemaining = pomoSeconds(pomoMode);
 let pomoTimerId = null;
-let pomoSessions = 0;
+let pomoSessions = stats.sessions; // restored from storage
 
 function pomoFormat(sec) {
   const m = Math.floor(sec / 60);
@@ -667,10 +729,13 @@ function pomoStart() {
   if (pomoTimerId) { pomoStop(); pomoRender(); return; }  // toggle -> pause
   pomoTimerId = setInterval(() => {
     pomoRemaining--;
+    // Count each elapsed focus second as study time (not during breaks).
+    if (pomoMode === "focus") { addStudySeconds(1); renderStudyToday(); }
     if (pomoRemaining <= 0) {
       pomoStop();
-      if (pomoMode === "focus") pomoSessions++;
+      if (pomoMode === "focus") { pomoSessions++; stats.sessions = pomoSessions; saveStats(); }
       pomoRemaining = 0;
+      renderStudyStats();
       pomoRender();
       try { // gentle beep; ignored if the browser blocks audio
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -707,6 +772,68 @@ document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
   b.addEventListener("click", () => pomoSetMode(b.dataset.pomoMode));
 });
 
+/* ----- Study-time stats: daily / weekly / monthly / yearly bars ----- */
+function formatHm(sec) {
+  const totalMin = Math.floor(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+// Sum studied seconds whose date (YYYY-MM-DD) passes the predicate.
+function sumStudy(pred) {
+  let total = 0;
+  for (const [date, sec] of Object.entries(stats.daily)) {
+    if (pred(date)) total += sec;
+  }
+  return total;
+}
+
+function renderStudyToday() {
+  const today = todayIso();
+  document.getElementById("study-today").textContent = formatHm(stats.daily[today] || 0);
+}
+
+function renderStudyStats() {
+  renderStudyToday();
+
+  const now = new Date();
+  const today = todayIso();
+
+  // Start of ISO week (Monday).
+  const weekStart = new Date(now);
+  const dow = (now.getDay() + 6) % 7; // 0 = Monday
+  weekStart.setDate(now.getDate() - dow);
+  const weekStartIso = isoOf(weekStart);
+
+  const month = today.slice(0, 7);  // YYYY-MM
+  const year = today.slice(0, 4);   // YYYY
+
+  const daySec = stats.daily[today] || 0;
+  const weekSec = sumStudy((d) => d >= weekStartIso && d <= today);
+  const monthSec = sumStudy((d) => d.startsWith(month));
+  const yearSec = sumStudy((d) => d.startsWith(year));
+
+  // Each bar is filled relative to a sensible reference max (in seconds):
+  //   day ~ 8h, week ~ 40h, month ~ 160h, year ~ 1000h. Caps at 100%.
+  const rows = [
+    { key: "day", label: "Today", sec: daySec, max: 8 * 3600, cls: "" },
+    { key: "week", label: "This week", sec: weekSec, max: 40 * 3600, cls: "week" },
+    { key: "month", label: "This month", sec: monthSec, max: 160 * 3600, cls: "month" },
+    { key: "year", label: "This year", sec: yearSec, max: 1000 * 3600, cls: "year" },
+  ];
+
+  const wrap = document.getElementById("study-stats");
+  wrap.innerHTML = rows.map((r) => {
+    const pct = Math.min(100, Math.round((r.sec / r.max) * 100));
+    return `
+      <div class="stat-row">
+        <div class="stat-label"><span>${r.label}</span><span class="stat-hours">${formatHm(r.sec)}</span></div>
+        <div class="stat-bar"><div class="stat-fill ${r.cls}" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join("");
+}
+
 // Custom-duration settings form
 function pomoFillSettings() {
   document.getElementById("dur-focus").value = pomoMinutes.focus;
@@ -741,3 +868,4 @@ initCalendarState();
 renderDashboard();
 pomoFillSettings();
 pomoRender();
+renderStudyStats();

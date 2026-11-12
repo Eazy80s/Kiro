@@ -102,6 +102,21 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .pomo-settings label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: var(--muted); }
 .pomo-settings input { width: 110px; }
 
+/* Study-time tracking */
+.studytime-card { text-align: left; }
+.today-time { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.today-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.study-stats { display: flex; flex-direction: column; gap: 12px; }
+.stat-row { }
+.stat-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; }
+.stat-label .stat-hours { color: var(--muted); font-variant-numeric: tabular-nums; }
+.stat-bar { background: var(--surface-2); border-radius: 999px; overflow: hidden; height: 10px; }
+.stat-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.35s ease; }
+.stat-fill.week { background: #0ea5e9; }
+.stat-fill.month { background: #8b5cf6; }
+.stat-fill.year { background: #16a34a; }
+.study-note { margin-top: 14px; }
+
 /* Progress bars */
 .progress-card { padding: 18px; }
 .progress-label { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; gap: 10px; }

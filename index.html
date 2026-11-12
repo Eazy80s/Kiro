@@ -23,6 +23,21 @@
       <!-- Exam countdown -->
       <div id="countdown-card" class="countdown-card"></div>
 
+      <h2>Focus Timer</h2>
+      <div class="pomodoro-card">
+        <div class="pomo-mode-tabs">
+          <button data-pomo-mode="focus" class="active">Focus</button>
+          <button data-pomo-mode="short">Short break</button>
+          <button data-pomo-mode="long">Long break</button>
+        </div>
+        <div id="pomo-time" class="pomo-time">25:00</div>
+        <div class="pomo-controls">
+          <button id="pomo-start" class="primary-btn">Start</button>
+          <button id="pomo-reset" class="secondary-btn">Reset</button>
+        </div>
+        <div id="pomo-count" class="pomo-count">Completed focus sessions: 0</div>
+      </div>
+
       <h2>Overall Progress</h2>
       <div class="progress-card">
         <div class="progress-label">

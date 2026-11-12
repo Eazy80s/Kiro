@@ -57,19 +57,20 @@ function moduleProgress(module) {
   return Math.round((done / module.tasks.length) * 100);
 }
 
-// Overall progress is weighted by ECTS when credits exist, otherwise a simple
-// average. Modules with no tasks and not completed are ignored.
+// Overall study progress is driven ONLY by completed modules — checklist tasks
+// do not affect it. A module counts as 100% when marked completed, else 0%.
+// ECTS-weighted when any credits are set, otherwise a plain count of modules.
 function overallProgress() {
-  const relevant = state.modules.filter((m) => m.completed || m.tasks.length > 0);
-  if (!relevant.length) return { pct: 0, weighted: false };
+  const all = state.modules;
+  if (!all.length) return { pct: 0, weighted: false };
 
-  const totalEcts = relevant.reduce((a, m) => a + (m.ects || 0), 0);
+  const totalEcts = all.reduce((a, m) => a + (m.ects || 0), 0);
   if (totalEcts > 0) {
-    const sum = relevant.reduce((a, m) => a + moduleProgress(m) * (m.ects || 0), 0);
-    return { pct: Math.round(sum / totalEcts), weighted: true };
+    const doneEcts = all.reduce((a, m) => a + (m.completed ? (m.ects || 0) : 0), 0);
+    return { pct: Math.round((doneEcts / totalEcts) * 100), weighted: true };
   }
-  const sum = relevant.reduce((a, m) => a + moduleProgress(m), 0);
-  return { pct: Math.round(sum / relevant.length), weighted: false };
+  const done = all.filter((m) => m.completed).length;
+  return { pct: Math.round((done / all.length) * 100), weighted: false };
 }
 
 // GPA = ECTS-weighted average of recorded grades (ignores modules with no grade).
@@ -121,11 +122,9 @@ function renderDashboard() {
   document.getElementById("overall-bar").style.width = pct + "%";
   document.getElementById("overall-mode").textContent = weighted ? "(ECTS-weighted)" : "";
 
-  const totalTasks = state.modules.reduce((a, m) => a + m.tasks.length, 0);
-  const doneTasks = state.modules.reduce((a, m) => a + m.tasks.filter((t) => t.done).length, 0);
   const completedCount = state.modules.filter((m) => m.completed).length;
   document.getElementById("overall-summary").textContent = state.modules.length
-    ? `${doneTasks} of ${totalTasks} tasks done · ${completedCount}/${state.modules.length} module(s) completed.`
+    ? `${completedCount} of ${state.modules.length} module(s) completed. (Progress reflects completed modules only.)`
     : "No modules yet — add one in the Modules tab to start tracking.";
 
   const gpa = computeGpa();
@@ -544,6 +543,82 @@ function setStatus(msg, isError) {
   el.style.color = isError ? "var(--danger)" : "var(--muted)";
 }
 
+/* ============================================================
+   POMODORO TIMER
+   ============================================================ */
+const POMO_DURATIONS = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
+const POMO_LABELS = { focus: "Focus", short: "Short break", long: "Long break" };
+let pomoMode = "focus";
+let pomoRemaining = POMO_DURATIONS[pomoMode];
+let pomoTimerId = null;
+let pomoSessions = 0;
+
+function pomoFormat(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function pomoRender() {
+  document.getElementById("pomo-time").textContent = pomoFormat(pomoRemaining);
+  document.getElementById("pomo-count").textContent = `Completed focus sessions: ${pomoSessions}`;
+  document.getElementById("pomo-start").textContent = pomoTimerId ? "Pause" : "Start";
+  document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.pomoMode === pomoMode);
+  });
+  document.title = pomoTimerId
+    ? `${pomoFormat(pomoRemaining)} · ${POMO_LABELS[pomoMode]} — Study Tracker`
+    : "Study Tracker";
+}
+
+function pomoStop() {
+  if (pomoTimerId) { clearInterval(pomoTimerId); pomoTimerId = null; }
+}
+
+function pomoStart() {
+  if (pomoTimerId) { pomoStop(); pomoRender(); return; }  // toggle -> pause
+  pomoTimerId = setInterval(() => {
+    pomoRemaining--;
+    if (pomoRemaining <= 0) {
+      pomoStop();
+      if (pomoMode === "focus") pomoSessions++;
+      pomoRemaining = 0;
+      pomoRender();
+      try { // gentle beep; ignored if the browser blocks audio
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.connect(ctx.destination);
+        osc.frequency.value = 660;
+        osc.start();
+        setTimeout(() => { osc.stop(); ctx.close(); }, 450);
+      } catch (e) {}
+      alert(`${POMO_LABELS[pomoMode]} finished!`);
+      // Auto-suggest the next mode: focus -> short break -> focus ...
+      pomoSetMode(pomoMode === "focus" ? "short" : "focus");
+      return;
+    }
+    pomoRender();
+  }, 1000);
+  pomoRender();
+}
+
+function pomoSetMode(mode) {
+  pomoMode = mode;
+  pomoStop();
+  pomoRemaining = POMO_DURATIONS[mode];
+  pomoRender();
+}
+
+document.getElementById("pomo-start").addEventListener("click", pomoStart);
+document.getElementById("pomo-reset").addEventListener("click", () => {
+  pomoStop();
+  pomoRemaining = POMO_DURATIONS[pomoMode];
+  pomoRender();
+});
+document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
+  b.addEventListener("click", () => pomoSetMode(b.dataset.pomoMode));
+});
+
 /* ---------- Utilities ---------- */
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -554,3 +629,4 @@ function escapeHtml(str) {
 /* ---------- Boot ---------- */
 initCalendarState();
 renderDashboard();
+pomoRender();

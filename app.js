@@ -101,9 +101,16 @@ function computeGpa() {
   return { value: sum / graded.length, count: graded.length, weighted: false };
 }
 
-/* ---------- Date helpers ---------- */
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-function isoOf(d) { return d.toISOString().slice(0, 10); }
+/* ---------- Date helpers ----------
+   Use LOCAL date components (not toISOString(), which is UTC) so day math
+   never drifts by a day in timezones behind/ahead of UTC. */
+function isoOf(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function todayIso() { return isoOf(new Date()); }
 function formatDate(iso) { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; }
 
 // Whole-day difference between two YYYY-MM-DD strings (b - a), date-only.
@@ -217,14 +224,8 @@ function renderPinnedTasks() {
   }
 
   groups.forEach((group, gi) => {
-    // Thin black divider bar between tasks from different modules.
-    if (gi > 0) {
-      const divider = document.createElement("div");
-      divider.className = "focus-divider";
-      list.appendChild(divider);
-    }
     const label = document.createElement("div");
-    label.className = "focus-group-label";
+    label.className = "focus-group-label" + (gi > 0 ? " spaced" : "");
     label.textContent = group.module.name;
     list.appendChild(label);
 

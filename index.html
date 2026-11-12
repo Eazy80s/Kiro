@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Study Tracker</title>
+
+  <!-- Installable web app (Add to Home Screen on iPhone) -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Study Tracker" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,11 +21,11 @@
     <aside class="sidebar">
       <h1 class="brand">🎓 Study<br />Tracker</h1>
       <nav class="tabs">
-        <button class="tab-btn active" data-tab="dashboard"><span class="tab-ico">🏠</span> Dashboard</button>
-        <button class="tab-btn" data-tab="calendar"><span class="tab-ico">📅</span> Calendar</button>
-        <button class="tab-btn" data-tab="modules"><span class="tab-ico">📚</span> Modules</button>
-        <button class="tab-btn" data-tab="pomodoro"><span class="tab-ico">⏱️</span> Pomodoro</button>
-        <button class="tab-btn" data-tab="data"><span class="tab-ico">💾</span> Data</button>
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="calendar">Calendar</button>
+        <button class="tab-btn" data-tab="modules">Modules</button>
+        <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
+        <button class="tab-btn" data-tab="data">Data</button>
       </nav>
     </aside>
 
@@ -171,5 +181,13 @@
   </div>
 
   <script src="app.js"></script>
+  <script>
+    // Register the service worker so the app works offline once installed.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

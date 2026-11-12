@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="104" fill="#4f46e5"/>
+  <g fill="#ffffff">
+    <!-- graduation cap -->
+    <path d="M256 150 L412 214 L256 278 L100 214 Z"/>
+    <path d="M160 246 L160 320 C160 356 212 382 256 382 C300 382 352 356 352 320 L352 246 L256 284 Z"/>
+    <rect x="404" y="214" width="12" height="96" rx="6"/>
+    <circle cx="410" cy="320" r="18"/>
+  </g>
+</svg>

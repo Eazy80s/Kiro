@@ -55,7 +55,6 @@ body {
 }
 .tab-btn:hover { color: var(--text); background: rgba(0,0,0,0.04); }
 .tab-btn.active { background: var(--accent); color: #fff; }
-.tab-ico { font-size: 1rem; width: 1.2em; text-align: center; }
 
 main { flex: 1; max-width: 760px; margin: 0 auto; padding: 28px 24px; width: 100%; }
 
@@ -184,9 +183,9 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .focus-list .focus-text { flex: 1; }
 .focus-list .focus-text.done { text-decoration: line-through; color: var(--muted); }
 .focus-list .focus-mod { color: var(--muted); font-size: 0.76rem; }
-/* thin divider separating tasks from different modules in Today's Focus */
+/* module grouping labels in Today's Focus (separation via spacing, no bar) */
 .focus-group-label { font-size: 0.74rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 2px 2px; }
-.focus-divider { height: 2px; background: #111827; border-radius: 1px; margin: 6px 0; opacity: 0.85; }
+.focus-group-label.spaced { margin-top: 16px; }
 
 /* Subtasks */
 .subtask-list { list-style: none; margin: 4px 0 2px 30px; display: flex; flex-direction: column; gap: 4px; }

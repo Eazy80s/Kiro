@@ -13,26 +13,34 @@
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="calendar">Calendar</button>
       <button class="tab-btn" data-tab="modules">Modules</button>
+      <button class="tab-btn" data-tab="data">Data</button>
     </nav>
   </header>
 
   <main>
     <!-- DASHBOARD -->
     <section id="dashboard" class="tab-panel active">
+      <!-- Exam countdown -->
+      <div id="countdown-card" class="countdown-card"></div>
+
       <h2>Overall Progress</h2>
       <div class="progress-card">
         <div class="progress-label">
-          <span>Total study progress</span>
+          <span>Total study progress <span id="overall-mode" class="muted-inline"></span></span>
           <span id="overall-percent">0%</span>
         </div>
         <div class="progress-bar big">
           <div id="overall-bar" class="progress-fill" style="width:0%"></div>
         </div>
         <p id="overall-summary" class="muted"></p>
+        <p id="gpa-summary" class="muted"></p>
       </div>
 
-      <h2>Module Progress</h2>
-      <div id="dashboard-modules" class="module-progress-list"></div>
+      <h2>Currently Working On</h2>
+      <div id="pinned-modules" class="module-progress-list"></div>
+
+      <h2>Today's Focus</h2>
+      <ul id="pinned-tasks" class="focus-list"></ul>
 
       <h2>Upcoming</h2>
       <ul id="upcoming-events" class="upcoming-list"></ul>
@@ -41,15 +49,29 @@
     <!-- CALENDAR -->
     <section id="calendar" class="tab-panel">
       <div class="calendar-controls">
-        <button id="prev-month" class="icon-btn">‹</button>
+        <div class="nav-group">
+          <button id="prev-month" class="icon-btn" title="Previous month">«</button>
+          <button id="prev-day" class="icon-btn" title="Previous day">‹</button>
+        </div>
         <h2 id="calendar-title"></h2>
-        <button id="next-month" class="icon-btn">›</button>
+        <div class="nav-group">
+          <button id="next-day" class="icon-btn" title="Next day">›</button>
+          <button id="next-month" class="icon-btn" title="Next month">»</button>
+        </div>
       </div>
+      <div class="calendar-sub">
+        <button id="today-btn" class="ghost-btn">Today</button>
+        <span id="selected-day-label" class="muted"></span>
+      </div>
+
       <div class="calendar-weekdays">
         <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
         <span>Fri</span><span>Sat</span><span>Sun</span>
       </div>
       <div id="calendar-grid" class="calendar-grid"></div>
+
+      <!-- Selected day detail -->
+      <div id="day-detail" class="day-detail"></div>
 
       <div class="event-form-wrap">
         <h3>Add an entry</h3>
@@ -71,9 +93,27 @@
     <section id="modules" class="tab-panel">
       <form id="module-form" class="inline-form">
         <input type="text" id="module-name" placeholder="New module name (e.g. Linear Algebra)" required />
+        <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
         <button type="submit" class="primary-btn">Add module</button>
       </form>
       <div id="modules-list" class="modules-list"></div>
+    </section>
+
+    <!-- DATA -->
+    <section id="data" class="tab-panel">
+      <h2>Backup &amp; Restore</h2>
+      <p class="muted">Your data lives only in this browser. Export it to keep a backup or move it to another device.</p>
+      <div class="data-actions">
+        <button id="export-btn" class="primary-btn">⬇ Export data (.json)</button>
+        <label class="primary-btn file-label">
+          ⬆ Import data
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p id="data-status" class="muted"></p>
+      <h2>Reset</h2>
+      <p class="muted">Permanently delete everything stored in this browser.</p>
+      <button id="reset-btn" class="danger-btn">Delete all data</button>
     </section>
   </main>
 

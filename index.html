@@ -7,18 +7,19 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="app-header">
-    <h1>🎓 Study Tracker</h1>
-    <nav class="tabs">
-      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-      <button class="tab-btn" data-tab="calendar">Calendar</button>
-      <button class="tab-btn" data-tab="modules">Modules</button>
-      <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
-      <button class="tab-btn" data-tab="data">Data</button>
-    </nav>
-  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">🎓 Study<br />Tracker</h1>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="dashboard"><span class="tab-ico">🏠</span> Dashboard</button>
+        <button class="tab-btn" data-tab="calendar"><span class="tab-ico">📅</span> Calendar</button>
+        <button class="tab-btn" data-tab="modules"><span class="tab-ico">📚</span> Modules</button>
+        <button class="tab-btn" data-tab="pomodoro"><span class="tab-ico">⏱️</span> Pomodoro</button>
+        <button class="tab-btn" data-tab="data"><span class="tab-ico">💾</span> Data</button>
+      </nav>
+    </aside>
 
-  <main>
+    <main>
     <!-- DASHBOARD -->
     <section id="dashboard" class="tab-panel active">
       <!-- Exam countdown -->
@@ -123,8 +124,14 @@
           <span class="muted">Studied today</span>
           <span id="study-today" class="today-value">0h 00m</span>
         </div>
+        <div class="stats-nav">
+          <button id="stats-prev" class="icon-btn" title="Previous day">‹</button>
+          <span id="stats-ref-label" class="stats-ref-label">Today</span>
+          <button id="stats-next" class="icon-btn" title="Next day">›</button>
+          <button id="stats-today" class="ghost-btn">Today</button>
+        </div>
         <div id="study-stats" class="study-stats"></div>
-        <p class="muted study-note">Focus-timer minutes are counted as study time. Breaks are not.</p>
+        <p class="muted study-note">Focus-timer minutes are counted as study time. Breaks are not. Use ‹ › to view other days.</p>
       </div>
 
       <h2>Custom Durations</h2>
@@ -160,7 +167,8 @@
       <p class="muted">Permanently delete everything stored in this browser.</p>
       <button id="reset-btn" class="danger-btn">Delete all data</button>
     </section>
-  </main>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

@@ -789,50 +789,86 @@ function sumStudy(pred) {
   return total;
 }
 
+// The study-time bars are shown relative to a reference date you can cycle
+// through. Day = that date; week/month/year = the periods containing it.
+let statsRefDate = todayIso();
+
 function renderStudyToday() {
-  const today = todayIso();
-  document.getElementById("study-today").textContent = formatHm(stats.daily[today] || 0);
+  // "Studied today" always reflects the real current day (live counter target).
+  document.getElementById("study-today").textContent = formatHm(stats.daily[todayIso()] || 0);
+}
+
+// Short, readable label for the reference day, e.g. "Today" or "12.11.2026".
+function refDayLabel() {
+  if (statsRefDate === todayIso()) return "Today";
+  return formatDate(statsRefDate);
 }
 
 function renderStudyStats() {
   renderStudyToday();
 
-  const now = new Date();
-  const today = todayIso();
+  const ref = new Date(statsRefDate + "T00:00:00");
+  const refIso = statsRefDate;
 
-  // Start of ISO week (Monday).
-  const weekStart = new Date(now);
-  const dow = (now.getDay() + 6) % 7; // 0 = Monday
-  weekStart.setDate(now.getDate() - dow);
+  // Start of ISO week (Monday) containing the reference date.
+  const weekStart = new Date(ref);
+  const dow = (ref.getDay() + 6) % 7; // 0 = Monday
+  weekStart.setDate(ref.getDate() - dow);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
   const weekStartIso = isoOf(weekStart);
+  const weekEndIso = isoOf(weekEnd);
 
-  const month = today.slice(0, 7);  // YYYY-MM
-  const year = today.slice(0, 4);   // YYYY
+  const month = refIso.slice(0, 7);  // YYYY-MM
+  const year = refIso.slice(0, 4);   // YYYY
+  const monthName = MONTHS[ref.getMonth()];
 
-  const daySec = stats.daily[today] || 0;
-  const weekSec = sumStudy((d) => d >= weekStartIso && d <= today);
+  const daySec = stats.daily[refIso] || 0;
+  const weekSec = sumStudy((d) => d >= weekStartIso && d <= weekEndIso);
   const monthSec = sumStudy((d) => d.startsWith(month));
   const yearSec = sumStudy((d) => d.startsWith(year));
 
   // Each bar is filled relative to a sensible reference max (in seconds):
   //   day ~ 8h, week ~ 40h, month ~ 160h, year ~ 1000h. Caps at 100%.
   const rows = [
-    { key: "day", label: "Today", sec: daySec, max: 8 * 3600, cls: "" },
-    { key: "week", label: "This week", sec: weekSec, max: 40 * 3600, cls: "week" },
-    { key: "month", label: "This month", sec: monthSec, max: 160 * 3600, cls: "month" },
-    { key: "year", label: "This year", sec: yearSec, max: 1000 * 3600, cls: "year" },
+    { label: "Day", sub: refDayLabel(), sec: daySec, max: 8 * 3600, cls: "" },
+    { label: "Week", sub: `${formatDate(weekStartIso)} – ${formatDate(weekEndIso)}`, sec: weekSec, max: 40 * 3600, cls: "week" },
+    { label: "Month", sub: `${monthName} ${year}`, sec: monthSec, max: 160 * 3600, cls: "month" },
+    { label: "Year", sub: year, sec: yearSec, max: 1000 * 3600, cls: "year" },
   ];
+
+  document.getElementById("stats-ref-label").textContent = refDayLabel();
 
   const wrap = document.getElementById("study-stats");
   wrap.innerHTML = rows.map((r) => {
     const pct = Math.min(100, Math.round((r.sec / r.max) * 100));
     return `
       <div class="stat-row">
-        <div class="stat-label"><span>${r.label}</span><span class="stat-hours">${formatHm(r.sec)}</span></div>
+        <div class="stat-label">
+          <span>${r.label} <span class="stat-sub">${r.sub}</span></span>
+          <span class="stat-hours">${formatHm(r.sec)}</span>
+        </div>
         <div class="stat-bar"><div class="stat-fill ${r.cls}" style="width:${pct}%"></div></div>
       </div>`;
   }).join("");
 }
+
+function shiftStatsDay(delta) {
+  const d = new Date(statsRefDate + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  // Don't allow browsing into the future.
+  if (isoOf(d) > todayIso()) return;
+  statsRefDate = isoOf(d);
+  renderStudyStats();
+}
+
+// Study-time day navigation
+document.getElementById("stats-prev").addEventListener("click", () => shiftStatsDay(-1));
+document.getElementById("stats-next").addEventListener("click", () => shiftStatsDay(1));
+document.getElementById("stats-today").addEventListener("click", () => {
+  statsRefDate = todayIso();
+  renderStudyStats();
+});
 
 // Custom-duration settings form
 function pomoFillSettings() {

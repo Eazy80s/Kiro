@@ -34,10 +34,13 @@ function migrate(data) {
     if (m.grade === undefined) m.grade = null;
     if (typeof m.completed !== "boolean") m.completed = false;
     if (typeof m.pinned !== "boolean") m.pinned = false;
+    if (typeof m.collapsed !== "boolean") m.collapsed = false;
     if (!Array.isArray(m.tasks)) m.tasks = [];
     m.tasks.forEach((t) => {
       if (typeof t.done !== "boolean") t.done = false;
       if (typeof t.pinned !== "boolean") t.pinned = false;
+      // Scheduled date (YYYY-MM-DD) or null. Drives Calendar + Today's Focus.
+      if (t.date === undefined) t.date = null;
       if (!Array.isArray(t.subtasks)) t.subtasks = [];
       t.subtasks.forEach((s) => { if (typeof s.done !== "boolean") s.done = false; });
     });
@@ -118,6 +121,15 @@ function daysBetween(aIso, bIso) {
   const a = new Date(aIso + "T00:00:00");
   const b = new Date(bIso + "T00:00:00");
   return Math.round((b - a) / 86400000);
+}
+
+// All module tasks scheduled on a given date, as { module, task } pairs.
+function tasksOnDate(dateStr) {
+  const out = [];
+  state.modules.forEach((m) => {
+    m.tasks.forEach((t) => { if (t.date === dateStr) out.push({ module: m, task: t }); });
+  });
+  return out;
 }
 
 /* ---------- Tab navigation ---------- */
@@ -213,13 +225,14 @@ function renderPinnedTasks() {
   const list = document.getElementById("pinned-tasks");
   list.innerHTML = "";
 
-  // Collect pinned tasks grouped per module, keeping module order.
+  // Today's Focus = tasks scheduled for today, grouped per module.
+  const today = todayIso();
   const groups = state.modules
-    .map((m) => ({ module: m, tasks: m.tasks.filter((t) => t.pinned) }))
+    .map((m) => ({ module: m, tasks: m.tasks.filter((t) => t.date === today) }))
     .filter((g) => g.tasks.length > 0);
 
   if (!groups.length) {
-    list.innerHTML = `<p class="empty-state">No tasks pinned. Pin checklist items (📌) to focus on them today.</p>`;
+    list.innerHTML = `<p class="empty-state">No tasks scheduled for today. Give a task a date in Modules or plan it in the Calendar.</p>`;
     return;
   }
 
@@ -341,16 +354,28 @@ function renderCalendar() {
       + (dateStr === selectedDate ? " selected" : "");
     cell.innerHTML = `<span class="day-num">${day}</span>`;
 
-    state.events
-      .filter((e) => e.date === dateStr)
-      .slice(0, 3)
-      .forEach((e) => {
-        const ev = document.createElement("div");
-        ev.className = `cal-event ${e.type}`;
-        ev.textContent = e.title;
-        ev.title = `${e.title} (${e.type})`;
-        cell.appendChild(ev);
-      });
+    // Calendar events on this day
+    const dayItems = [];
+    state.events.filter((e) => e.date === dateStr).forEach((e) => {
+      dayItems.push({ kind: "event", type: e.type, label: e.title });
+    });
+    // Scheduled module tasks on this day
+    tasksOnDate(dateStr).forEach(({ module, task }) => {
+      dayItems.push({ kind: "task", type: "task", label: `${task.text} · ${module.name}` });
+    });
+    dayItems.slice(0, 3).forEach((it) => {
+      const ev = document.createElement("div");
+      ev.className = `cal-event ${it.type}`;
+      ev.textContent = it.label;
+      ev.title = it.label;
+      cell.appendChild(ev);
+    });
+    if (dayItems.length > 3) {
+      const more = document.createElement("div");
+      more.className = "cal-more";
+      more.textContent = `+${dayItems.length - 3} more`;
+      cell.appendChild(more);
+    }
 
     cell.addEventListener("click", () => {
       selectedDate = dateStr;
@@ -369,18 +394,53 @@ function renderDayDetail() {
     .filter((e) => e.date === selectedDate)
     .sort((a, b) => a.title.localeCompare(b.title));
 
+  const dayTasks = tasksOnDate(selectedDate);
+
   let html = `<h3>${formatDate(selectedDate)}</h3>`;
-  if (!dayEvents.length) {
-    html += `<p class="muted">No entries on this day. Use the form below (date is pre-filled).</p>`;
-  } else {
-    dayEvents.forEach((e) => {
-      html += `
-        <div class="d-event">
-          <span class="d-left"><span class="tag ${e.type}">${e.type}</span> ${escapeHtml(e.title)}</span>
-          <button class="del-btn" data-del-event="${e.id}" title="Delete">✕</button>
-        </div>`;
-    });
+
+  if (!dayEvents.length && !dayTasks.length) {
+    html += `<p class="muted">Nothing scheduled. Add a calendar entry below, or plan a module task for this day.</p>`;
   }
+
+  // Calendar events
+  dayEvents.forEach((e) => {
+    html += `
+      <div class="d-event">
+        <span class="d-left"><span class="tag ${e.type}">${e.type}</span> ${escapeHtml(e.title)}</span>
+        <button class="del-btn" data-del-event="${e.id}" title="Delete">✕</button>
+      </div>`;
+  });
+
+  // Scheduled module tasks (planned work)
+  dayTasks.forEach(({ module, task }) => {
+    html += `
+      <div class="d-event d-task">
+        <span class="d-left">
+          <input type="checkbox" data-task-done="${task.id}" ${task.done ? "checked" : ""} />
+          <span class="tag task">task</span>
+          <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>
+        </span>
+        <button class="del-btn" data-unplan="${task.id}" title="Remove from this day">✕</button>
+      </div>`;
+  });
+
+  // "Plan a task" picker — list unscheduled tasks to assign to this day.
+  const unscheduled = [];
+  state.modules.forEach((m) => {
+    m.tasks.forEach((t) => { if (t.date !== selectedDate) unscheduled.push({ m, t }); });
+  });
+  if (unscheduled.length) {
+    html += `
+      <form class="plan-task-form">
+        <select data-plan-select>
+          <option value="">Plan a module task for this day…</option>
+          ${unscheduled.map(({ m, t }) =>
+            `<option value="${t.id}">${escapeHtml(m.name)} — ${escapeHtml(t.text)}</option>`).join("")}
+        </select>
+        <button type="submit" class="secondary-btn">Plan</button>
+      </form>`;
+  }
+
   wrap.innerHTML = html;
 
   wrap.querySelectorAll("[data-del-event]").forEach((btn) => {
@@ -391,8 +451,49 @@ function renderDayDetail() {
     });
   });
 
+  // Toggle a scheduled task's done state from the calendar
+  wrap.querySelectorAll("[data-task-done]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const task = findTaskById(cb.dataset.taskDone);
+      if (task) {
+        task.done = cb.checked;
+        task.subtasks.forEach((s) => { s.done = cb.checked; });
+        saveState(); renderCalendar();
+      }
+    });
+  });
+
+  // Unplan (clear a task's date)
+  wrap.querySelectorAll("[data-unplan]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const task = findTaskById(btn.dataset.unplan);
+      if (task) { task.date = null; saveState(); renderCalendar(); }
+    });
+  });
+
+  // Plan a task onto this day
+  const planForm = wrap.querySelector(".plan-task-form");
+  if (planForm) {
+    planForm.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const id = planForm.querySelector("[data-plan-select]").value;
+      if (!id) return;
+      const task = findTaskById(id);
+      if (task) { task.date = selectedDate; saveState(); renderCalendar(); }
+    });
+  }
+
   // Pre-fill the add-entry date field with the selected day.
   document.getElementById("event-date").value = selectedDate;
+}
+
+// Find a task object anywhere in the modules by id.
+function findTaskById(id) {
+  for (const m of state.modules) {
+    const t = m.tasks.find((x) => x.id === id);
+    if (t) return t;
+  }
+  return null;
 }
 
 function shiftDay(delta) {
@@ -448,7 +549,7 @@ document.getElementById("module-form").addEventListener("submit", (e) => {
   const name = document.getElementById("module-name").value.trim();
   const ects = parseFloat(document.getElementById("module-ects").value) || 0;
   if (!name) return;
-  state.modules.push({ id: uid(), name, ects, grade: null, completed: false, pinned: false, tasks: [] });
+  state.modules.push({ id: uid(), name, ects, grade: null, completed: false, pinned: false, collapsed: false, tasks: [] });
   saveState();
   e.target.reset();
   renderModules();
@@ -463,137 +564,162 @@ function renderModules() {
     return;
   }
 
-  state.modules.forEach((m) => {
-    const pct = moduleProgress(m);
-    const done = m.tasks.filter((t) => t.done).length;
-    const card = document.createElement("div");
-    card.className = "module-card" + (m.completed ? " completed" : "");
+  // Three sections: Ongoing (pinned, not finished), Upcoming (rest), Finished.
+  const ongoing = state.modules.filter((m) => m.pinned && !m.completed);
+  const upcoming = state.modules.filter((m) => !m.pinned && !m.completed);
+  const finished = state.modules.filter((m) => m.completed);
 
-    card.innerHTML = `
-      <div class="module-head">
-        <h3>
-          ${escapeHtml(m.name)}
-          ${m.ects ? `<span class="badge">${m.ects} ECTS</span>` : ""}
-          ${m.completed ? `<span class="badge done">✓ done</span>` : ""}
-        </h3>
-        <div class="module-actions">
-          <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
-          <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Pin to dashboard">📌</button>
-          <button class="del-btn" data-del-module title="Delete module">🗑</button>
-        </div>
+  const sections = [
+    { title: "Ongoing", hint: "Pinned modules you're working on", items: ongoing },
+    { title: "Upcoming", hint: "Not started / not pinned", items: upcoming },
+    { title: "Finished", hint: "Completed modules", items: finished },
+  ];
+
+  sections.forEach((sec) => {
+    if (!sec.items.length) return;
+    const header = document.createElement("div");
+    header.className = "module-section-head";
+    header.innerHTML = `<span>${sec.title} <span class="section-count">${sec.items.length}</span></span><span class="section-hint">${sec.hint}</span>`;
+    wrap.appendChild(header);
+    sec.items.forEach((m) => wrap.appendChild(renderModuleCard(m)));
+  });
+}
+
+function renderModuleCard(m) {
+  const pct = moduleProgress(m);
+  const done = m.tasks.filter((t) => t.done).length;
+  const card = document.createElement("div");
+  card.className = "module-card" + (m.completed ? " completed" : "") + (m.collapsed ? " collapsed" : "");
+
+  card.innerHTML = `
+    <div class="module-head">
+      <h3>
+        <button class="collapse-btn" data-collapse title="${m.collapsed ? "Expand" : "Collapse"}">${m.collapsed ? "▸" : "▾"}</button>
+        ${escapeHtml(m.name)}
+        ${m.ects ? `<span class="badge">${m.ects} ECTS</span>` : ""}
+        ${m.completed ? `<span class="badge done">✓ done</span>` : ""}
+      </h3>
+      <div class="module-actions">
+        <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
+        <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Mark as ongoing (pin)">📌</button>
+        <button class="del-btn" data-del-module title="Delete module">🗑</button>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="module-body">
       <div class="module-controls">
         <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Completed</label>
         <label>Grade: <input type="number" class="grade-input" data-grade step="0.1" placeholder="—" value="${m.grade ?? ""}"/></label>
         <label>ECTS: <input type="number" class="grade-input" data-ects step="0.5" min="0" placeholder="0" value="${m.ects || ""}"/></label>
       </div>
       <ul class="checklist"></ul>
-      <form class="add-task-form"><input type="text" placeholder="New checklist item…" required /><button type="submit" class="primary-btn">Add</button></form>`;
+      <form class="add-task-form"><input type="text" placeholder="New checklist item…" required /><button type="submit" class="primary-btn">Add</button></form>
+    </div>`;
 
-    // Checklist items (each as a block: the task row + its subtasks)
-    const ul = card.querySelector(".checklist");
-    m.tasks.forEach((t) => {
-      const li = document.createElement("li");
-      li.className = "task-block";
-      const cbId = `t-${t.id}`;
-      const subDone = t.subtasks.filter((s) => s.done).length;
-      const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
+  // Collapse/expand toggle
+  card.querySelector("[data-collapse]").addEventListener("click", () => {
+    m.collapsed = !m.collapsed; saveState(); renderModules();
+  });
 
-      li.innerHTML = `
-        <div class="task-row">
-          <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
-          <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
-          <button class="pin-btn ${t.pinned ? "pinned" : ""}" data-pin title="Pin to Today's Focus">📌</button>
-          <button class="del-btn" data-del-task title="Delete item">✕</button>
-        </div>
-        <ul class="subtask-list"></ul>
-        <form class="add-subtask-form"><input type="text" placeholder="Add a subtask…" required /><button type="submit" class="secondary-btn">+</button></form>`;
+  // Checklist items (each as a block: the task row + date + subtasks)
+  const ul = card.querySelector(".checklist");
+  m.tasks.forEach((t) => {
+    const li = document.createElement("li");
+    li.className = "task-block";
+    const cbId = `t-${t.id}`;
+    const subDone = t.subtasks.filter((s) => s.done).length;
+    const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
 
-      // Subtasks
-      const subUl = li.querySelector(".subtask-list");
-      t.subtasks.forEach((s) => {
-        const sli = document.createElement("li");
-        const sId = `s-${s.id}`;
-        sli.innerHTML = `
-          <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
-          <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>
-          <button class="del-btn" title="Delete subtask">✕</button>`;
-        sli.querySelector("input").addEventListener("change", (ev) => {
-          s.done = ev.target.checked;
-          // If every subtask is done, auto-complete the parent task.
-          if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
-          else if (!ev.target.checked) t.done = false;
-          saveState(); renderModules();
-        });
-        sli.querySelector(".del-btn").addEventListener("click", () => {
-          t.subtasks = t.subtasks.filter((x) => x.id !== s.id); saveState(); renderModules();
-        });
-        subUl.appendChild(sli);
-      });
+    li.innerHTML = `
+      <div class="task-row">
+        <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
+        <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+        <input type="date" class="task-date" data-date value="${t.date || ""}" title="Schedule this task (shows in Calendar & Today's Focus)" />
+        <button class="del-btn" data-del-task title="Delete item">✕</button>
+      </div>
+      <ul class="subtask-list"></ul>
+      <form class="add-subtask-form"><input type="text" placeholder="Add a subtask…" required /><button type="submit" class="secondary-btn">+</button></form>`;
 
-      // Add subtask
-      li.querySelector(".add-subtask-form").addEventListener("submit", (ev) => {
-        ev.preventDefault();
-        const input = ev.target.querySelector("input");
-        const text = input.value.trim();
-        if (!text) return;
-        t.subtasks.push({ id: uid(), text, done: false });
+    // Subtasks
+    const subUl = li.querySelector(".subtask-list");
+    t.subtasks.forEach((s) => {
+      const sli = document.createElement("li");
+      const sId = `s-${s.id}`;
+      sli.innerHTML = `
+        <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
+        <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>
+        <button class="del-btn" title="Delete subtask">✕</button>`;
+      sli.querySelector("input").addEventListener("change", (ev) => {
+        s.done = ev.target.checked;
+        if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
+        else if (!ev.target.checked) t.done = false;
         saveState(); renderModules();
       });
-
-      li.querySelector(".task-done").addEventListener("change", (ev) => {
-        t.done = ev.target.checked;
-        // Ticking/unticking the parent cascades to its subtasks.
-        t.subtasks.forEach((s) => { s.done = ev.target.checked; });
-        saveState(); renderModules();
+      sli.querySelector(".del-btn").addEventListener("click", () => {
+        t.subtasks = t.subtasks.filter((x) => x.id !== s.id); saveState(); renderModules();
       });
-      li.querySelector("[data-pin]").addEventListener("click", () => {
-        t.pinned = !t.pinned; saveState(); renderModules();
-      });
-      li.querySelector("[data-del-task]").addEventListener("click", () => {
-        m.tasks = m.tasks.filter((x) => x.id !== t.id); saveState(); renderModules();
-      });
-      ul.appendChild(li);
+      subUl.appendChild(sli);
     });
 
-    // Add task
-    card.querySelector(".add-task-form").addEventListener("submit", (ev) => {
+    // Add subtask
+    li.querySelector(".add-subtask-form").addEventListener("submit", (ev) => {
       ev.preventDefault();
       const input = ev.target.querySelector("input");
       const text = input.value.trim();
       if (!text) return;
-      m.tasks.push({ id: uid(), text, done: false, pinned: false, subtasks: [] });
+      t.subtasks.push({ id: uid(), text, done: false });
       saveState(); renderModules();
     });
 
-    // Completed toggle
-    card.querySelector("[data-complete]").addEventListener("change", (ev) => {
-      m.completed = ev.target.checked; saveState(); renderModules();
+    li.querySelector(".task-done").addEventListener("change", (ev) => {
+      t.done = ev.target.checked;
+      t.subtasks.forEach((s) => { s.done = ev.target.checked; });
+      saveState(); renderModules();
     });
-    // Grade
-    card.querySelector("[data-grade]").addEventListener("change", (ev) => {
-      const v = parseFloat(ev.target.value);
-      m.grade = isNaN(v) ? null : v; saveState();
+    // Schedule date -> drives Calendar + Today's Focus
+    li.querySelector("[data-date]").addEventListener("change", (ev) => {
+      t.date = ev.target.value || null;
+      saveState();
+      renderModules();
     });
-    // ECTS
-    card.querySelector("[data-ects]").addEventListener("change", (ev) => {
-      m.ects = parseFloat(ev.target.value) || 0; saveState(); renderModules();
+    li.querySelector("[data-del-task]").addEventListener("click", () => {
+      m.tasks = m.tasks.filter((x) => x.id !== t.id); saveState(); renderModules();
     });
-    // Pin module
-    card.querySelector("[data-pin-module]").addEventListener("click", () => {
-      m.pinned = !m.pinned; saveState(); renderModules();
-    });
-    // Delete module
-    card.querySelector("[data-del-module]").addEventListener("click", () => {
-      if (confirm(`Delete module "${m.name}" and all its tasks?`)) {
-        state.modules = state.modules.filter((x) => x.id !== m.id);
-        saveState(); renderModules();
-      }
-    });
-
-    wrap.appendChild(card);
+    ul.appendChild(li);
   });
+
+  // Add task
+  card.querySelector(".add-task-form").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const input = ev.target.querySelector("input");
+    const text = input.value.trim();
+    if (!text) return;
+    m.tasks.push({ id: uid(), text, done: false, date: null, subtasks: [] });
+    saveState(); renderModules();
+  });
+
+  // Completed toggle (moving a module between sections re-renders)
+  card.querySelector("[data-complete]").addEventListener("change", (ev) => {
+    m.completed = ev.target.checked; saveState(); renderModules();
+  });
+  card.querySelector("[data-grade]").addEventListener("change", (ev) => {
+    const v = parseFloat(ev.target.value);
+    m.grade = isNaN(v) ? null : v; saveState();
+  });
+  card.querySelector("[data-ects]").addEventListener("change", (ev) => {
+    m.ects = parseFloat(ev.target.value) || 0; saveState(); renderModules();
+  });
+  card.querySelector("[data-pin-module]").addEventListener("click", () => {
+    m.pinned = !m.pinned; saveState(); renderModules();
+  });
+  card.querySelector("[data-del-module]").addEventListener("click", () => {
+    if (confirm(`Delete module "${m.name}" and all its tasks?`)) {
+      state.modules = state.modules.filter((x) => x.id !== m.id);
+      saveState(); renderModules();
+    }
+  });
+
+  return card;
 }
 
 /* ============================================================

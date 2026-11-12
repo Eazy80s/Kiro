@@ -98,6 +98,9 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .pomo-time { font-size: 3.2rem; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .pomo-controls { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .pomo-count { color: var(--muted); font-size: 0.82rem; margin-top: 10px; }
+.pomo-settings { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.pomo-settings label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: var(--muted); }
+.pomo-settings input { width: 110px; }
 
 /* Progress bars */
 .progress-card { padding: 18px; }
@@ -138,6 +141,21 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .focus-list .focus-text { flex: 1; }
 .focus-list .focus-text.done { text-decoration: line-through; color: var(--muted); }
 .focus-list .focus-mod { color: var(--muted); font-size: 0.76rem; }
+/* thin divider separating tasks from different modules in Today's Focus */
+.focus-group-label { font-size: 0.74rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 2px 2px; }
+.focus-divider { height: 2px; background: #111827; border-radius: 1px; margin: 6px 0; opacity: 0.85; }
+
+/* Subtasks */
+.subtask-list { list-style: none; margin: 4px 0 2px 30px; display: flex; flex-direction: column; gap: 4px; }
+.subtask-list li { display: flex; align-items: center; gap: 8px; }
+.subtask-list input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.subtask-list label { flex: 1; cursor: pointer; font-size: 0.86rem; }
+.subtask-list label.done { text-decoration: line-through; color: var(--muted); }
+.add-subtask-form { display: flex; gap: 6px; margin: 2px 0 2px 30px; }
+.add-subtask-form input { flex: 1; padding: 5px 9px; font-size: 0.82rem; }
+.add-subtask-form button { padding: 5px 12px; font-size: 0.82rem; }
+.task-row { display: flex; align-items: center; gap: 10px; }
+.task-block { display: flex; flex-direction: column; margin-bottom: 4px; }
 
 /* Upcoming */
 .upcoming-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }

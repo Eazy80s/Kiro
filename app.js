@@ -1,9 +1,11 @@
 /* ============================================================
    Study Tracker — data persisted in localStorage
-   Data model (v2):
-     module: { id, name, ects, grade, completed, pinned, tasks: [task] }
-     task:   { id, text, done, pinned }
-     event:  { id, date (YYYY-MM-DD), title, type }
+   Data model (v3):
+     module:  { id, name, ects, grade, completed, pinned, tasks: [task] }
+     task:    { id, text, done, pinned, subtasks: [subtask] }
+     subtask: { id, text, done }
+     event:   { id, date (YYYY-MM-DD), title, type }
+   Pomodoro durations (minutes) are stored under a separate key.
    ============================================================ */
 
 const STORAGE_KEY = "study-tracker-v1";
@@ -36,6 +38,8 @@ function migrate(data) {
     m.tasks.forEach((t) => {
       if (typeof t.done !== "boolean") t.done = false;
       if (typeof t.pinned !== "boolean") t.pinned = false;
+      if (!Array.isArray(t.subtasks)) t.subtasks = [];
+      t.subtasks.forEach((s) => { if (typeof s.done !== "boolean") s.done = false; });
     });
   });
   return data;
@@ -189,27 +193,42 @@ function renderPinnedModules() {
 function renderPinnedTasks() {
   const list = document.getElementById("pinned-tasks");
   list.innerHTML = "";
-  const items = [];
-  state.modules.forEach((m) => {
-    m.tasks.forEach((t) => { if (t.pinned) items.push({ module: m, task: t }); });
-  });
-  if (!items.length) {
+
+  // Collect pinned tasks grouped per module, keeping module order.
+  const groups = state.modules
+    .map((m) => ({ module: m, tasks: m.tasks.filter((t) => t.pinned) }))
+    .filter((g) => g.tasks.length > 0);
+
+  if (!groups.length) {
     list.innerHTML = `<p class="empty-state">No tasks pinned. Pin checklist items (📌) to focus on them today.</p>`;
     return;
   }
-  items.forEach(({ module, task }) => {
-    const li = document.createElement("li");
-    const cbId = `focus-${task.id}`;
-    li.innerHTML = `
-      <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
-      <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}</span>
-      <span class="focus-mod">${escapeHtml(module.name)}</span>`;
-    li.querySelector("input").addEventListener("change", (ev) => {
-      task.done = ev.target.checked;
-      saveState();
-      renderDashboard();
+
+  groups.forEach((group, gi) => {
+    // Thin black divider bar between tasks from different modules.
+    if (gi > 0) {
+      const divider = document.createElement("div");
+      divider.className = "focus-divider";
+      list.appendChild(divider);
+    }
+    const label = document.createElement("div");
+    label.className = "focus-group-label";
+    label.textContent = group.module.name;
+    list.appendChild(label);
+
+    group.tasks.forEach((task) => {
+      const li = document.createElement("li");
+      const cbId = `focus-${task.id}`;
+      li.innerHTML = `
+        <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
+        <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}</span>`;
+      li.querySelector("input").addEventListener("change", (ev) => {
+        task.done = ev.target.checked;
+        saveState();
+        renderDashboard();
+      });
+      list.appendChild(li);
     });
-    list.appendChild(li);
   });
 }
 
@@ -429,23 +448,67 @@ function renderModules() {
       <ul class="checklist"></ul>
       <form class="add-task-form"><input type="text" placeholder="New checklist item…" required /><button type="submit" class="primary-btn">Add</button></form>`;
 
-    // Checklist items
+    // Checklist items (each as a block: the task row + its subtasks)
     const ul = card.querySelector(".checklist");
     m.tasks.forEach((t) => {
       const li = document.createElement("li");
+      li.className = "task-block";
       const cbId = `t-${t.id}`;
+      const subDone = t.subtasks.filter((s) => s.done).length;
+      const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
+
       li.innerHTML = `
-        <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
-        <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}</label>
-        <button class="pin-btn ${t.pinned ? "pinned" : ""}" title="Pin to Today's Focus">📌</button>
-        <button class="del-btn" title="Delete item">✕</button>`;
-      li.querySelector(".task-done").addEventListener("change", (ev) => {
-        t.done = ev.target.checked; saveState(); renderModules();
+        <div class="task-row">
+          <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
+          <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+          <button class="pin-btn ${t.pinned ? "pinned" : ""}" data-pin title="Pin to Today's Focus">📌</button>
+          <button class="del-btn" data-del-task title="Delete item">✕</button>
+        </div>
+        <ul class="subtask-list"></ul>
+        <form class="add-subtask-form"><input type="text" placeholder="Add a subtask…" required /><button type="submit" class="secondary-btn">+</button></form>`;
+
+      // Subtasks
+      const subUl = li.querySelector(".subtask-list");
+      t.subtasks.forEach((s) => {
+        const sli = document.createElement("li");
+        const sId = `s-${s.id}`;
+        sli.innerHTML = `
+          <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
+          <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>
+          <button class="del-btn" title="Delete subtask">✕</button>`;
+        sli.querySelector("input").addEventListener("change", (ev) => {
+          s.done = ev.target.checked;
+          // If every subtask is done, auto-complete the parent task.
+          if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
+          else if (!ev.target.checked) t.done = false;
+          saveState(); renderModules();
+        });
+        sli.querySelector(".del-btn").addEventListener("click", () => {
+          t.subtasks = t.subtasks.filter((x) => x.id !== s.id); saveState(); renderModules();
+        });
+        subUl.appendChild(sli);
       });
-      li.querySelector(".pin-btn").addEventListener("click", () => {
+
+      // Add subtask
+      li.querySelector(".add-subtask-form").addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const input = ev.target.querySelector("input");
+        const text = input.value.trim();
+        if (!text) return;
+        t.subtasks.push({ id: uid(), text, done: false });
+        saveState(); renderModules();
+      });
+
+      li.querySelector(".task-done").addEventListener("change", (ev) => {
+        t.done = ev.target.checked;
+        // Ticking/unticking the parent cascades to its subtasks.
+        t.subtasks.forEach((s) => { s.done = ev.target.checked; });
+        saveState(); renderModules();
+      });
+      li.querySelector("[data-pin]").addEventListener("click", () => {
         t.pinned = !t.pinned; saveState(); renderModules();
       });
-      li.querySelector(".del-btn").addEventListener("click", () => {
+      li.querySelector("[data-del-task]").addEventListener("click", () => {
         m.tasks = m.tasks.filter((x) => x.id !== t.id); saveState(); renderModules();
       });
       ul.appendChild(li);
@@ -457,7 +520,7 @@ function renderModules() {
       const input = ev.target.querySelector("input");
       const text = input.value.trim();
       if (!text) return;
-      m.tasks.push({ id: uid(), text, done: false, pinned: false });
+      m.tasks.push({ id: uid(), text, done: false, pinned: false, subtasks: [] });
       saveState(); renderModules();
     });
 
@@ -544,12 +607,37 @@ function setStatus(msg, isError) {
 }
 
 /* ============================================================
-   POMODORO TIMER
+   POMODORO TIMER (with custom, persisted durations)
    ============================================================ */
-const POMO_DURATIONS = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
+const POMO_KEY = "study-tracker-pomodoro";
+const POMO_DEFAULTS = { focus: 25, short: 5, long: 15 }; // minutes
 const POMO_LABELS = { focus: "Focus", short: "Short break", long: "Long break" };
+
+// Durations persist across reloads; values are in minutes.
+let pomoMinutes = loadPomoMinutes();
+function loadPomoMinutes() {
+  try {
+    const raw = localStorage.getItem(POMO_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      return {
+        focus: clampMin(p.focus, POMO_DEFAULTS.focus),
+        short: clampMin(p.short, POMO_DEFAULTS.short),
+        long: clampMin(p.long, POMO_DEFAULTS.long),
+      };
+    }
+  } catch (e) {}
+  return { ...POMO_DEFAULTS };
+}
+function clampMin(v, fallback) {
+  const n = Math.round(Number(v));
+  return (!n || n < 1 || n > 180) ? fallback : n;
+}
+function savePomoMinutes() { localStorage.setItem(POMO_KEY, JSON.stringify(pomoMinutes)); }
+function pomoSeconds(mode) { return pomoMinutes[mode] * 60; }
+
 let pomoMode = "focus";
-let pomoRemaining = POMO_DURATIONS[pomoMode];
+let pomoRemaining = pomoSeconds(pomoMode);
 let pomoTimerId = null;
 let pomoSessions = 0;
 
@@ -605,18 +693,40 @@ function pomoStart() {
 function pomoSetMode(mode) {
   pomoMode = mode;
   pomoStop();
-  pomoRemaining = POMO_DURATIONS[mode];
+  pomoRemaining = pomoSeconds(mode);
   pomoRender();
 }
 
 document.getElementById("pomo-start").addEventListener("click", pomoStart);
 document.getElementById("pomo-reset").addEventListener("click", () => {
   pomoStop();
-  pomoRemaining = POMO_DURATIONS[pomoMode];
+  pomoRemaining = pomoSeconds(pomoMode);
   pomoRender();
 });
 document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
   b.addEventListener("click", () => pomoSetMode(b.dataset.pomoMode));
+});
+
+// Custom-duration settings form
+function pomoFillSettings() {
+  document.getElementById("dur-focus").value = pomoMinutes.focus;
+  document.getElementById("dur-short").value = pomoMinutes.short;
+  document.getElementById("dur-long").value = pomoMinutes.long;
+}
+document.getElementById("pomo-settings").addEventListener("submit", (e) => {
+  e.preventDefault();
+  pomoMinutes = {
+    focus: clampMin(document.getElementById("dur-focus").value, POMO_DEFAULTS.focus),
+    short: clampMin(document.getElementById("dur-short").value, POMO_DEFAULTS.short),
+    long: clampMin(document.getElementById("dur-long").value, POMO_DEFAULTS.long),
+  };
+  savePomoMinutes();
+  pomoFillSettings();          // reflect any clamped values
+  pomoStop();
+  pomoRemaining = pomoSeconds(pomoMode); // apply to the current mode immediately
+  pomoRender();
+  const el = document.getElementById("pomo-status");
+  el.textContent = `Saved — focus ${pomoMinutes.focus}m, short ${pomoMinutes.short}m, long ${pomoMinutes.long}m.`;
 });
 
 /* ---------- Utilities ---------- */
@@ -629,4 +739,5 @@ function escapeHtml(str) {
 /* ---------- Boot ---------- */
 initCalendarState();
 renderDashboard();
+pomoFillSettings();
 pomoRender();

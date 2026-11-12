@@ -231,15 +231,45 @@ function renderPinnedTasks() {
 
     group.tasks.forEach((task) => {
       const li = document.createElement("li");
+      li.className = "focus-item";
       const cbId = `focus-${task.id}`;
+      const subDone = task.subtasks.filter((s) => s.done).length;
+      const subLabel = task.subtasks.length ? ` <span class="focus-sub-count">(${subDone}/${task.subtasks.length})</span>` : "";
+
       li.innerHTML = `
-        <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
-        <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}</span>`;
-      li.querySelector("input").addEventListener("change", (ev) => {
+        <div class="focus-main">
+          <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
+          <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}${subLabel}</span>
+        </div>
+        <ul class="focus-subtasks"></ul>`;
+
+      // Parent toggle cascades to subtasks (same rule as the Modules view).
+      li.querySelector(`#${CSS.escape(cbId)}`).addEventListener("change", (ev) => {
         task.done = ev.target.checked;
+        task.subtasks.forEach((s) => { s.done = ev.target.checked; });
         saveState();
         renderDashboard();
       });
+
+      // Render this task's subtasks beneath it.
+      const subUl = li.querySelector(".focus-subtasks");
+      task.subtasks.forEach((s) => {
+        const sli = document.createElement("li");
+        const sId = `focus-${task.id}-${s.id}`;
+        sli.innerHTML = `
+          <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
+          <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>`;
+        sli.querySelector("input").addEventListener("change", (ev) => {
+          s.done = ev.target.checked;
+          // All subtasks done -> complete parent; untick one -> reopen parent.
+          if (task.subtasks.length && task.subtasks.every((x) => x.done)) task.done = true;
+          else if (!ev.target.checked) task.done = false;
+          saveState();
+          renderDashboard();
+        });
+        subUl.appendChild(sli);
+      });
+
       list.appendChild(li);
     });
   });
@@ -703,6 +733,9 @@ let pomoMode = "focus";
 let pomoRemaining = pomoSeconds(pomoMode);
 let pomoTimerId = null;
 let pomoSessions = stats.sessions; // restored from storage
+let pomoEndTime = null;            // absolute ms timestamp the period ends
+let pomoLastTick = null;           // last wall-clock sample (for study accrual)
+let studyCarry = 0;                // sub-second focus time carried between ticks
 
 function pomoFormat(sec) {
   const m = Math.floor(sec / 60);
@@ -724,44 +757,77 @@ function pomoRender() {
 
 function pomoStop() {
   if (pomoTimerId) { clearInterval(pomoTimerId); pomoTimerId = null; }
+  pomoEndTime = null;
+  pomoLastTick = null;
+  studyCarry = 0;
+}
+
+// One timer tick. Driven by the real clock (Date.now), so background-tab
+// throttling never slows the countdown — we recompute from timestamps.
+function pomoTick() {
+  const now = Date.now();
+
+  // Accrue focus study-time from the real elapsed interval (handles throttling
+  // and tabs waking up after being suspended).
+  if (pomoMode === "focus" && pomoLastTick != null) {
+    studyCarry += (now - pomoLastTick) / 1000;
+    const whole = Math.floor(studyCarry);
+    if (whole > 0) {
+      // Don't count time past the period end.
+      const remainingToEnd = Math.max(0, Math.ceil((pomoEndTime - pomoLastTick) / 1000));
+      const credited = Math.min(whole, remainingToEnd);
+      if (credited > 0) { addStudySeconds(credited); renderStudyToday(); }
+      studyCarry -= whole;
+    }
+  }
+  pomoLastTick = now;
+
+  pomoRemaining = Math.max(0, Math.round((pomoEndTime - now) / 1000));
+
+  if (pomoRemaining <= 0) {
+    pomoStop();
+    if (pomoMode === "focus") { pomoSessions++; stats.sessions = pomoSessions; saveStats(); }
+    renderStudyStats();
+    pomoRender();
+    try { // gentle beep; ignored if the browser blocks audio
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.connect(ctx.destination);
+      osc.frequency.value = 660;
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 450);
+    } catch (e) {}
+    alert(`${POMO_LABELS[pomoMode]} finished!`);
+    pomoSetMode(pomoMode === "focus" ? "short" : "focus");
+    return;
+  }
+  pomoRender();
 }
 
 function pomoStart() {
   if (pomoTimerId) { pomoStop(); pomoRender(); return; }  // toggle -> pause
-  pomoTimerId = setInterval(() => {
-    pomoRemaining--;
-    // Count each elapsed focus second as study time (not during breaks).
-    if (pomoMode === "focus") { addStudySeconds(1); renderStudyToday(); }
-    if (pomoRemaining <= 0) {
-      pomoStop();
-      if (pomoMode === "focus") { pomoSessions++; stats.sessions = pomoSessions; saveStats(); }
-      pomoRemaining = 0;
-      renderStudyStats();
-      pomoRender();
-      try { // gentle beep; ignored if the browser blocks audio
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        osc.connect(ctx.destination);
-        osc.frequency.value = 660;
-        osc.start();
-        setTimeout(() => { osc.stop(); ctx.close(); }, 450);
-      } catch (e) {}
-      alert(`${POMO_LABELS[pomoMode]} finished!`);
-      // Auto-suggest the next mode: focus -> short break -> focus ...
-      pomoSetMode(pomoMode === "focus" ? "short" : "focus");
-      return;
-    }
-    pomoRender();
-  }, 1000);
+  pomoEndTime = Date.now() + pomoRemaining * 1000;
+  pomoLastTick = Date.now();
+  studyCarry = 0;
+  pomoTimerId = setInterval(pomoTick, 250); // sub-second cadence keeps it smooth
   pomoRender();
 }
 
 function pomoSetMode(mode) {
   pomoMode = mode;
   pomoStop();
+  pomoEndTime = null;
+  pomoLastTick = null;
+  studyCarry = 0;
   pomoRemaining = pomoSeconds(mode);
   pomoRender();
 }
+
+// When a throttled/suspended tab becomes visible again, resync immediately
+// instead of waiting for the next slow tick.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && pomoTimerId) pomoTick();
+});
 
 document.getElementById("pomo-start").addEventListener("click", pomoStart);
 document.getElementById("pomo-reset").addEventListener("click", () => {
@@ -769,6 +835,9 @@ document.getElementById("pomo-reset").addEventListener("click", () => {
   pomoRemaining = pomoSeconds(pomoMode);
   pomoRender();
 });
+
+// Keep the timer accurate while the tab is in the background: alarm fallback.
+// (Primary accuracy comes from timestamp math in pomoTick.)
 document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
   b.addEventListener("click", () => pomoSetMode(b.dataset.pomoMode));
 });

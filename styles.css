@@ -179,10 +179,19 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
   align-items: center;
   gap: 10px;
 }
+/* a focus item is a column: the task row, then its subtasks beneath */
+.focus-list li.focus-item { flex-direction: column; align-items: stretch; gap: 6px; }
+.focus-main { display: flex; align-items: center; gap: 10px; }
 .focus-list input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent-2); cursor: pointer; }
-.focus-list .focus-text { flex: 1; }
+.focus-list .focus-text { flex: 1; text-align: left; }
 .focus-list .focus-text.done { text-decoration: line-through; color: var(--muted); }
 .focus-list .focus-mod { color: var(--muted); font-size: 0.76rem; }
+.focus-sub-count { color: var(--muted); font-size: 0.78rem; }
+.focus-subtasks { list-style: none; margin: 0 0 0 28px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.focus-subtasks li { background: none; border: none; border-radius: 0; padding: 0; display: flex; align-items: center; gap: 8px; }
+.focus-subtasks input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); }
+.focus-subtasks label { flex: 1; font-size: 0.86rem; cursor: pointer; text-align: left; }
+.focus-subtasks label.done { text-decoration: line-through; color: var(--muted); }
 /* module grouping labels in Today's Focus (separation via spacing, no bar) */
 .focus-group-label { font-size: 0.74rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 2px 2px; }
 .focus-group-label.spaced { margin-top: 16px; }
@@ -196,8 +205,9 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .add-subtask-form { display: flex; gap: 6px; margin: 2px 0 2px 30px; }
 .add-subtask-form input { flex: 1; padding: 5px 9px; font-size: 0.82rem; }
 .add-subtask-form button { padding: 5px 12px; font-size: 0.82rem; }
-.task-row { display: flex; align-items: center; gap: 10px; }
-.task-block { display: flex; flex-direction: column; margin-bottom: 4px; }
+.task-row { display: flex; align-items: center; gap: 10px; width: 100%; }
+.task-block { display: flex; flex-direction: column; align-items: stretch; margin-bottom: 4px; flex: 1; min-width: 0; }
+.task-block > .task-row > label { text-align: left; }
 
 /* Upcoming */
 .upcoming-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
@@ -343,8 +353,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .module-controls input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .grade-input { width: 80px; }
 
-.checklist { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
-.checklist li { display: flex; align-items: center; gap: 10px; }
+.checklist { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 0; }
+.checklist li { display: flex; align-items: stretch; gap: 10px; text-align: left; }
 .checklist input[type="checkbox"].task-done { width: 17px; height: 17px; accent-color: var(--accent-2); cursor: pointer; }
 .checklist label { flex: 1; cursor: pointer; }
 .checklist label.done { text-decoration: line-through; color: var(--muted); }

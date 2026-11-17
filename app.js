@@ -652,27 +652,33 @@ function renderCalendar() {
     cell.className = "cal-cell"
       + (dateStr === today ? " today" : "")
       + (dateStr === selectedDate ? " selected" : "");
+    cell.dataset.date = dateStr; // Drop-Ziel (Drag & Drop)
     cell.innerHTML = `<span class="day-num">${day}</span>`;
 
-    // Calendar events on this day (incl. recurring), timed first, ordered by time
+    // Calendar events on this day (incl. recurring), timed first, ordered by time.
+    // itemRef trägt die Herkunft, damit ein Eintrag per Drag umterminiert werden kann.
     const dayItems = [];
     eventsOnDate(dateStr)
       .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"))
       .forEach((e) => {
         const prefix = e.time ? `${formatTime(e.time)} ` : "";
         const rep = e.repeat ? " ↻" : "";
-        dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}`, color: e.color || null });
+        dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}`, color: e.color || null, drag: { kind: "event", id: e.id } });
       });
     // Scheduled module tasks on this day
     tasksOnDate(dateStr).forEach(({ module, task }) => {
-      dayItems.push({ type: "task", label: `${task.text} · ${module.name}`, color: null });
+      dayItems.push({ type: "task", label: `${task.text} · ${module.name}`, color: null, drag: { kind: "task", id: task.id } });
     });
     dayItems.slice(0, 3).forEach((it) => {
       const ev = document.createElement("div");
       ev.className = `cal-event ${it.type}`;
       if (it.color) ev.style.background = it.color;
       ev.textContent = it.label;
-      ev.title = it.label;
+      ev.title = it.label + " — gedrückt halten und auf einen anderen Tag ziehen";
+      ev.dataset.dragKind = it.drag.kind;
+      ev.dataset.dragId = it.drag.id;
+      ev.dataset.fromDate = dateStr;
+      makeDraggableCalEvent(ev);
       cell.appendChild(ev);
     });
     if (dayItems.length > 3) {
@@ -809,6 +815,151 @@ function findTaskById(id) {
     if (t) return t;
   }
   return null;
+}
+
+/* ============================================================
+   LONG-PRESS DRAG-ENGINE (Maus + Touch)
+   Gemeinsame Basis: Element nach ~400 ms Gedrückthalten „aufnehmen“,
+   per Finger/Maus bewegen, über einem Drop-Ziel ablegen. Funktioniert
+   auf dem iPhone (Touch) genauso wie am Mac (Zeiger).
+   ============================================================ */
+const LONG_PRESS_MS = 400;
+const MOVE_CANCEL_PX = 10; // Bewegung vor Long-Press-Ablauf = Scrollen, kein Drag
+
+// opts: { onDrop(targetEl), dropSelector, ghostText() }
+function attachLongPressDrag(el, opts) {
+  let timer = null, dragging = false, ghost = null, startX = 0, startY = 0, lastTarget = null;
+
+  function pointFromEvent(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    return { x: t.clientX, y: t.clientY };
+  }
+  function elementAt(x, y) {
+    if (ghost) ghost.style.display = "none";
+    const under = document.elementFromPoint(x, y);
+    if (ghost) ghost.style.display = "";
+    return under ? under.closest(opts.dropSelector) : null;
+  }
+  function startDrag(p) {
+    dragging = true;
+    document.body.classList.add("dragging-active");
+    el.classList.add("drag-source");
+    ghost = document.createElement("div");
+    ghost.className = "drag-ghost";
+    ghost.textContent = opts.ghostText ? opts.ghostText() : el.textContent;
+    document.body.appendChild(ghost);
+    moveGhost(p);
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+  }
+  function moveGhost(p) {
+    if (ghost) { ghost.style.left = p.x + "px"; ghost.style.top = p.y + "px"; }
+    const target = elementAt(p.x, p.y);
+    if (target !== lastTarget) {
+      if (lastTarget) lastTarget.classList.remove("drop-target");
+      if (target) target.classList.add("drop-target");
+      lastTarget = target;
+    }
+  }
+  function cleanup() {
+    clearTimeout(timer); timer = null;
+    document.body.classList.remove("dragging-active");
+    el.classList.remove("drag-source");
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (lastTarget) lastTarget.classList.remove("drop-target");
+    lastTarget = null;
+  }
+  function onDown(e) {
+    // Nur primärer Zeiger/erste Berührung
+    if (e.button != null && e.button !== 0) return;
+    const p = pointFromEvent(e);
+    startX = p.x; startY = p.y;
+    timer = setTimeout(() => { startDrag(p); }, LONG_PRESS_MS);
+    window.addEventListener("mousemove", onMove, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchend", onUp);
+    window.addEventListener("touchcancel", onUp);
+  }
+  function onMove(e) {
+    const p = pointFromEvent(e);
+    if (!dragging) {
+      // Vor Long-Press-Ablauf: zu viel Bewegung → als Scrollen werten, abbrechen
+      if (Math.abs(p.x - startX) > MOVE_CANCEL_PX || Math.abs(p.y - startY) > MOVE_CANCEL_PX) {
+        clearTimeout(timer); timer = null;
+      }
+      return;
+    }
+    e.preventDefault(); // Scrollen während Drag unterbinden
+    moveGhost(p);
+  }
+  function onUp(e) {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("touchmove", onMove);
+    window.removeEventListener("mouseup", onUp);
+    window.removeEventListener("touchend", onUp);
+    window.removeEventListener("touchcancel", onUp);
+    if (dragging) {
+      const p = pointFromEvent(e);
+      const target = elementAt(p.x, p.y);
+      dragging = false;
+      cleanup();
+      if (target) { if (e.cancelable) e.preventDefault(); opts.onDrop(target); }
+    } else {
+      cleanup();
+    }
+  }
+  el.addEventListener("mousedown", onDown);
+  el.addEventListener("touchstart", onDown, { passive: true });
+}
+
+// Kalendereintrag per Drag umterminieren (Event oder geplante Aufgabe).
+function makeDraggableCalEvent(ev) {
+  attachLongPressDrag(ev, {
+    dropSelector: ".cal-cell[data-date]",
+    ghostText: () => ev.textContent,
+    onDrop: (cell) => {
+      const toDate = cell.dataset.date;
+      const fromDate = ev.dataset.fromDate;
+      if (!toDate || toDate === fromDate) return;
+      moveCalItem(ev.dataset.dragKind, ev.dataset.dragId, fromDate, toDate);
+    },
+  });
+}
+
+// Verschiebt einen Kalendereintrag auf ein neues Datum.
+function moveCalItem(kind, id, fromDate, toDate) {
+  if (kind === "task") {
+    const t = findTaskById(id);
+    if (t) { t.date = toDate; saveState(); renderCalendar();
+      showSnackbar(`Aufgabe auf ${formatDate(toDate)} verschoben.`); }
+    return;
+  }
+  const e = state.events.find((x) => x.id === id);
+  if (!e) return;
+  if (e.repeat) {
+    // Wiederkehrende Einträge: ganze Serie verschieben (Startdatum), mit Rückfrage.
+    const delta = daysBetween(e.date, toDate) - daysBetween(e.date, fromDate);
+    const ok = confirm(
+      `„${e.title}“ ist eine wiederkehrende Serie.\n\n` +
+      `OK: ganze Serie um ${delta > 0 ? "+" : ""}${delta} Tag(e) verschieben.\n` +
+      `Abbrechen: nichts ändern.`
+    );
+    if (!ok) { renderCalendar(); return; }
+    const base = new Date(e.date + "T00:00:00");
+    base.setDate(base.getDate() + delta);
+    e.date = isoOf(base);
+    if (e.repeatUntil) {
+      const ru = new Date(e.repeatUntil + "T00:00:00");
+      ru.setDate(ru.getDate() + delta);
+      e.repeatUntil = isoOf(ru);
+    }
+    saveState(); renderCalendar();
+    showSnackbar(`Serie „${e.title}“ verschoben.`);
+  } else {
+    e.date = toDate;
+    saveState(); renderCalendar();
+    showSnackbar(`„${e.title}“ auf ${formatDate(toDate)} verschoben.`);
+  }
 }
 
 function shiftDay(delta) {
@@ -1163,6 +1314,16 @@ function renderModuleCard(m) {
       e.preventDefault(); e.stopPropagation(); li.classList.remove("drop-target");
       reorderTask(m, dragTaskId, t.id);
     });
+    // Touch-tauglich (iPhone): Long-Press zum Umsortieren der Aufgabe
+    li.dataset.taskId = t.id;
+    attachLongPressDrag(li, {
+      dropSelector: ".task-block[data-task-id]",
+      ghostText: () => t.text,
+      onDrop: (target) => {
+        const toId = target.dataset.taskId;
+        if (toId && toId !== t.id) reorderTask(m, t.id, toId);
+      },
+    });
 
     ul.appendChild(li);
   });
@@ -1223,6 +1384,19 @@ function renderModuleCard(m) {
     e.preventDefault(); card.classList.remove("drop-target");
     reorderModule(dragModuleId, m.id);
   });
+  // Touch-tauglich (iPhone): Long-Press auf der Modul-Überschrift sortiert um
+  const head = card.querySelector(".module-head h3");
+  if (head) {
+    head.classList.add("drag-handle");
+    attachLongPressDrag(head, {
+      dropSelector: ".module-card[data-module-id]",
+      ghostText: () => m.name,
+      onDrop: (target) => {
+        const toId = target.dataset.moduleId;
+        if (toId && toId !== m.id) reorderModule(m.id, toId);
+      },
+    });
+  }
 
   return card;
 }

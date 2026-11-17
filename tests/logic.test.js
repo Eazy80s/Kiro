@@ -213,6 +213,25 @@ eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-11
   eq([crosses(3600, 3600), crosses(7200, 60), crosses(6600, 300)], [true, false, false], "Tagesziel-Schwelle nur beim Überschreiten");
 }
 
+/* ---- Drag & Drop: Datumsverschiebung (Kalender) ---- */
+// Einmaliger Eintrag: neues Datum = Zieltag.
+{
+  const e = { date: "2026-11-10", repeat: null };
+  const toDate = "2026-11-18";
+  const newDate = e.repeat ? null : toDate;
+  eq(newDate, "2026-11-18", "Einzeltermin: Verschiebung setzt Zieldatum");
+}
+// Wiederkehrende Serie: Verschiebung um die Differenz (toDate − fromDate) ggü. Startdatum.
+{
+  const e = { date: "2026-11-02", repeat: "weekly", repeatUntil: "2026-12-14" };
+  const fromDate = "2026-11-16"; // ein Vorkommen
+  const toDate = "2026-11-18";   // 2 Tage später abgelegt
+  const delta = daysBetween(e.date, toDate) - daysBetween(e.date, fromDate); // = 2
+  const base = new Date(e.date + "T00:00:00"); base.setDate(base.getDate() + delta);
+  const ru = new Date(e.repeatUntil + "T00:00:00"); ru.setDate(ru.getDate() + delta);
+  eq([isoOf(base), isoOf(ru), delta], ["2026-11-04", "2026-12-16", 2], "Serie: Start + Enddatum um Delta verschoben");
+}
+
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

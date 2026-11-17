@@ -703,3 +703,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
   /* Fokus-Liste bleibt einspaltig (Teilaufgaben brauchen Breite) */
 }
+
+/* ============================================================
+   Long-Press Drag & Drop (Maus + Touch)
+   ============================================================ */
+/* schwebendes „Geist“-Element, das dem Finger/Zeiger folgt */
+.drag-ghost {
+  position: fixed; z-index: 1200; pointer-events: none;
+  transform: translate(-50%, -140%);
+  background: var(--accent); color: #fff;
+  padding: 6px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-shadow: var(--shadow-lg);
+}
+.drag-source { opacity: 0.4; }
+/* Kalenderzelle als aktives Drop-Ziel */
+.cal-cell.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; background: rgba(99,102,241,0.12); }
+/* gezogene Kalendereinträge: klar als greifbar markieren */
+.cal-event { cursor: grab; touch-action: manipulation; }
+/* Während eines aktiven Drags Textauswahl unterbinden */
+body.dragging-active { user-select: none; -webkit-user-select: none; }
+/* Modul-Überschrift als Ziehgriff am Touch */
+.module-head h3.drag-handle { touch-action: manipulation; }
+.task-block { touch-action: manipulation; }
+
+@media (prefers-reduced-motion: reduce) { .drag-ghost { box-shadow: none; } }

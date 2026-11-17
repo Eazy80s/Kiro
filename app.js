@@ -449,7 +449,8 @@ function renderCountdown() {
   const days = daysBetween(today, nextExamDate);
   const label = days === 0 ? "Heute!" : days === 1 ? "1 Tag" : `${days} Tage`;
   const timePart = nextExam.time ? ` · ${formatTime(nextExam.time)} Uhr` : "";
-  card.className = "countdown-card";
+  // ≤ 3 Tage → dringende, warme Darstellung
+  card.className = "countdown-card" + (days <= 3 ? " urgent" : "");
   card.innerHTML = `
     <div><div class="cd-days">${label}</div><div class="muted">bis zur nächsten Prüfung</div></div>
     <div class="cd-info">

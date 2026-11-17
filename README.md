@@ -14,7 +14,12 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **⏳ Prüfungs-Countdown** und **Demnächst**-Liste.
 - **🌓 Theme** – hell / dunkel / automatisch.
 - **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben.
-- **💾 Daten** – Export/Import als `.json`, Zurücksetzen; **Löschen mit „Rückgängig“**.
+- **🎓 Teilnoten** – Endnote je Modul aus gewichteten Komponenten (z. B. Klausur 70 % + Übung 30 %).
+- **📈 Noten-Prognose** – benötigter Schnitt für ein Ziel + bester/schlechtester möglicher Endschnitt.
+- **🗂️ Drag & Drop** – Module und Aufgaben per Ziehen umsortieren.
+- **🎨 Eigene Terminfarben**, **🖨️ Druck-/PDF-Semesterübersicht**, **🔥 Lern-Serie (Streak)**.
+- **☁️ Geräte-Sync** (Supabase) mit **Konflikt-Warnung**, lokaler Sicherung und **Online/Offline-Anzeige**.
+- **💾 Daten** – Export/Import als `.json`, `.ics`-Kalenderexport, Zurücksetzen; **Löschen mit „Rückgängig“**; **Fehlerprotokoll**.
 - **📱 Installierbar** (PWA) – auf dem iPhone „Zum Home-Bildschirm“, funktioniert offline (benötigt HTTPS-Hosting, siehe unten).
 
 ## Starten (lokal)
@@ -66,11 +71,13 @@ Ohne Sync liegt alles im **localStorage** des jeweiligen Browsers:
 
 ## Tests
 
-Automatisierte Tests der Rechenlogik (Fortschritt, GPA, Dauer, Wiederholungen):
-
 ```bash
-npm test      # oder: node tests/logic.test.js
+npm test            # Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …)
+npm run test:browser  # echter Headless-Chrome-Smoke-Test (überspringt, wenn kein Browser da ist)
+npm run test:all      # beides
 ```
+
+Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 
 ## Projektstruktur
 

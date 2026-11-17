@@ -118,6 +118,10 @@
             <option value="monthly">Monatlich</option>
           </select>
           <input type="date" id="event-repeat-until" title="Serie endet am (optional)" />
+          <label class="color-label" title="Eigene Farbe statt Typ-Standardfarbe">
+            <input type="checkbox" id="event-color-on" /> 🎨
+            <input type="color" id="event-color" value="#4f46e5" />
+          </label>
           <button type="submit" class="primary-btn">Hinzufügen</button>
         </form>
       </div>
@@ -165,6 +169,7 @@
           <span class="muted">Heute gelernt</span>
           <span id="study-today" class="today-value">0h 00m</span>
         </div>
+        <p id="study-streak" class="study-streak"></p>
         <div class="stats-nav">
           <button id="stats-prev" class="icon-btn" title="Vorheriger Tag">‹</button>
           <span id="stats-ref-label" class="stats-ref-label">Heute</span>
@@ -250,9 +255,11 @@
           <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
           <div class="data-actions">
             <button id="sync-now-btn" class="secondary-btn">Jetzt synchronisieren</button>
+            <button id="sync-restore-btn" class="secondary-btn">Lokale Sicherung wiederherstellen</button>
             <button id="sync-logout-btn" class="danger-btn">Abmelden</button>
           </div>
         </div>
+        <span id="conn-badge" class="conn-badge"></span>
         <p id="sync-status" class="muted" aria-live="polite"></p>
       </div>
 
@@ -273,6 +280,10 @@
       <p class="muted">Exportiere Prüfungen, Abgaben und geplante Aufgaben als <code>.ics</code>-Datei für Apple/Google Kalender.</p>
       <button id="ics-btn" class="primary-btn">📅 Kalender exportieren (.ics)</button>
 
+      <h2>Semesterübersicht drucken / als PDF</h2>
+      <p class="muted">Erzeugt eine druckbare Übersicht aller Module mit ECTS und Noten. Im Druckdialog kannst du „Als PDF sichern“ wählen.</p>
+      <button id="print-btn" class="primary-btn">🖨️ Übersicht drucken</button>
+
       <h2>Sicherung &amp; Wiederherstellung</h2>
       <p class="muted">Exportiere deine Daten als Sicherung oder um sie auf ein anderes Gerät zu übertragen.</p>
       <p id="backup-reminder" class="backup-reminder" hidden></p>
@@ -285,12 +296,23 @@
       </div>
       <p id="data-status" class="muted"></p>
 
+      <h2>Fehlerprotokoll</h2>
+      <p class="muted">Falls einmal etwas nicht funktioniert, werden die letzten Fehler hier lokal festgehalten.</p>
+      <div class="data-actions">
+        <button id="err-show-btn" class="secondary-btn">Protokoll anzeigen</button>
+        <button id="err-clear-btn" class="secondary-btn">Protokoll leeren</button>
+      </div>
+      <pre id="err-log" class="err-log" hidden></pre>
+
       <h2>Zurücksetzen</h2>
       <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
       <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
     </section>
     </main>
   </div>
+
+  <!-- Druck-/PDF-Ansicht (nur beim Drucken sichtbar) -->
+  <div id="print-view" class="print-view" aria-hidden="true"></div>
 
   <!-- Snackbar für „Rückgängig“ -->
   <div id="snackbar" class="snackbar" aria-live="polite"></div>

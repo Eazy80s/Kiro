@@ -150,6 +150,50 @@ eq(gradeForecast([{grade:2.0,ects:6}], 2.0).done, true, "Prognose: nichts offen 
 // ICS-Escaping (Punkt 3)
 eq(icsEscape("A, B; C"), "A\\, B\\; C", "ICS-Escaping von Komma/Semikolon");
 
+/* ---- Teilnoten → Endnote (Punkt 4) ---- */
+function computeComponentGrade(m) {
+  if (!m.gradeComponents || !m.gradeComponents.length) return null;
+  const valid = m.gradeComponents.filter((c) => typeof c.grade === "number" && (c.weight || 0) > 0);
+  if (!valid.length) return null;
+  const wsum = valid.reduce((a, c) => a + c.weight, 0);
+  if (wsum <= 0) return null;
+  return valid.reduce((a, c) => a + c.grade * c.weight, 0) / wsum;
+}
+// Klausur 1,0 (70%) + Übung 3,0 (30%) = 0,7 + 0,9 = 1,6
+eq(Number(computeComponentGrade({ gradeComponents: [{ grade: 1.0, weight: 70 }, { grade: 3.0, weight: 30 }] }).toFixed(2)), 1.6, "Teilnoten gewichtet = 1,6");
+eq(computeComponentGrade({ gradeComponents: [{ grade: null, weight: 50 }] }), null, "Teilnoten ohne Note = null");
+// ungleiche Gewichtssumme (anteilig): 2,0(50) + 4,0(50) = 3,0
+eq(Number(computeComponentGrade({ gradeComponents: [{ grade: 2.0, weight: 50 }, { grade: 4.0, weight: 50 }] }).toFixed(2)), 3.0, "Teilnoten 50/50 = 3,0");
+
+/* ---- Bester/schlechtester Endschnitt (Punkt 5) ---- */
+function gradeRange(modules) {
+  const w = modules.filter((m) => (m.ects || 0) > 0);
+  const total = w.reduce((a, m) => a + m.ects, 0);
+  if (!total) return null;
+  const gradedSum = w.reduce((a, m) => a + (typeof m.grade === "number" ? m.grade * m.ects : 0), 0);
+  const open = w.filter((m) => typeof m.grade !== "number").reduce((a, m) => a + m.ects, 0);
+  return { best: (gradedSum + 1.0 * open) / total, worst: (gradedSum + 4.0 * open) / total };
+}
+// benotet 2,0@6 ; offen 6 → best (12+6)/12=1,5 ; worst (12+24)/12=3,0
+{ const r = gradeRange([{ grade: 2.0, ects: 6 }, { grade: null, ects: 6 }]);
+  eq([Number(r.best.toFixed(2)), Number(r.worst.toFixed(2))], [1.5, 3.0], "Endschnitt-Bereich best/worst"); }
+
+/* ---- Lern-Serie / Streak (Punkt 7) ---- */
+function studyStreak(daily, todayStr) {
+  const iso = (d) => d.toISOString().slice(0, 10);
+  let streak = 0; const d = new Date(todayStr + "T00:00:00");
+  if (!(daily[iso(d)] > 0)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 1000; i++) { if (daily[iso(d)] > 0) { streak++; d.setDate(d.getDate() - 1); } else break; }
+  return streak;
+}
+eq(studyStreak({ "2026-11-17": 60, "2026-11-16": 60, "2026-11-15": 60 }, "2026-11-17"), 3, "Streak = 3 Tage");
+eq(studyStreak({ "2026-11-16": 60, "2026-11-15": 60 }, "2026-11-17"), 2, "Streak zählt ab gestern, wenn heute leer");
+eq(studyStreak({ "2026-11-17": 60, "2026-11-15": 60 }, "2026-11-17"), 1, "Streak bricht bei Lücke ab");
+
+/* ---- Erweiterte Wiederholung: biweekly mit repeatUntil ---- */
+eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-12-01" }, "2026-11-30"), true, "biweekly innerhalb Serie");
+eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-11-20" }, "2026-11-30"), false, "biweekly nach repeatUntil endet");
+
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

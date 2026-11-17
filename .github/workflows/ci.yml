@@ -17,3 +17,10 @@ jobs:
           node-version: 20
       - name: Logik-Tests ausführen
         run: npm test
+      - name: Chrome einrichten
+        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+      - name: Browser-Smoke-Test (headless Chrome)
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: node tests/browser.test.mjs

@@ -20,7 +20,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 let state = loadState();
 
@@ -48,12 +48,16 @@ function migrate(data) {
     if (e.repeat === undefined) e.repeat = null;
     // optionales Enddatum einer Serie ("YYYY-MM-DD" oder null)
     if (e.repeatUntil === undefined) e.repeatUntil = null;
+    // optionale eigene Farbe (Hex) — überschreibt die Typ-Standardfarbe (Punkt 8)
+    if (e.color === undefined) e.color = null;
   });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
     if (m.grade === undefined) m.grade = null;
     if (m.targetGrade === undefined) m.targetGrade = null; // Wunschnote
     if (m.semester === undefined) m.semester = null;       // z. B. "WS 2026/27"
+    // Teilnoten (Punkt 4): [{ id, label, grade, weight }]. Endnote = gewichteter Schnitt.
+    if (!Array.isArray(m.gradeComponents)) m.gradeComponents = [];
     if (typeof m.completed !== "boolean") m.completed = false;
     if (typeof m.pinned !== "boolean") m.pinned = false;
     if (typeof m.collapsed !== "boolean") m.collapsed = false;
@@ -215,6 +219,25 @@ function gradeLabel(g) {
 }
 function commaNum(n, digits) { return Number(n).toFixed(digits == null ? 1 : digits).replace(".", ","); }
 
+/* ---------- Teilnoten → Endnote (Punkt 4) ----------
+   Hat ein Modul Teilnoten mit Gewichten, ist die Endnote der gewichtete
+   Schnitt der benoteten Komponenten. m.grade wird daraus abgeleitet. */
+function computeComponentGrade(m) {
+  if (!m.gradeComponents || !m.gradeComponents.length) return null;
+  const valid = m.gradeComponents.filter((c) => typeof c.grade === "number" && (c.weight || 0) > 0);
+  if (!valid.length) return null;
+  const wsum = valid.reduce((a, c) => a + c.weight, 0);
+  if (wsum <= 0) return null;
+  return valid.reduce((a, c) => a + c.grade * c.weight, 0) / wsum;
+}
+// Endnote aus Teilnoten in m.grade spiegeln (auf 1 Nachkommastelle gerundet).
+function syncComponentGrade(m) {
+  if (m.gradeComponents && m.gradeComponents.length) {
+    const g = computeComponentGrade(m);
+    m.grade = g == null ? null : Math.round(g * 10) / 10;
+  }
+}
+
 /* ---------- Notenschnitt-Prognose (Punkt 7) ----------
    Welchen Durchschnitt brauche ich in den noch unbenoteten (ECTS-tragenden)
    Modulen, um ein Gesamtziel zu erreichen? ECTS-gewichtet, Skala 1,0–5,0. */
@@ -237,6 +260,20 @@ function gradeForecast(targetAvg) {
     impossible: needed < 1.0,
     tooEasy: needed > 5.0,
   };
+}
+
+// Bester/schlechtester möglicher ECTS-gewichteter Endschnitt (Punkt 5).
+// Unbenotete ECTS-Module werden mit 1,0 (best) bzw. 4,0 (worst, noch bestanden) angesetzt.
+function gradeRange() {
+  const withEcts = state.modules.filter((m) => (m.ects || 0) > 0);
+  const totalEcts = withEcts.reduce((a, m) => a + m.ects, 0);
+  if (totalEcts === 0) return null;
+  const gradedSum = withEcts.reduce((a, m) => a + (typeof m.grade === "number" ? m.grade * m.ects : 0), 0);
+  const openEcts = withEcts.filter((m) => typeof m.grade !== "number").reduce((a, m) => a + m.ects, 0);
+  const best = (gradedSum + 1.0 * openEcts) / totalEcts;
+  const worst = (gradedSum + 4.0 * openEcts) / totalEcts;
+  const current = (() => { const g = computeGpa(); return g ? g.value : null; })();
+  return { best, worst, current, openEcts };
 }
 
 /* ---------- Fälligkeits-Status einer Aufgabe (Punkt 5) ---------- */
@@ -622,15 +659,16 @@ function renderCalendar() {
       .forEach((e) => {
         const prefix = e.time ? `${formatTime(e.time)} ` : "";
         const rep = e.repeat ? " ↻" : "";
-        dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}` });
+        dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}`, color: e.color || null });
       });
     // Scheduled module tasks on this day
     tasksOnDate(dateStr).forEach(({ module, task }) => {
-      dayItems.push({ type: "task", label: `${task.text} · ${module.name}` });
+      dayItems.push({ type: "task", label: `${task.text} · ${module.name}`, color: null });
     });
     dayItems.slice(0, 3).forEach((it) => {
       const ev = document.createElement("div");
       ev.className = `cal-event ${it.type}`;
+      if (it.color) ev.style.background = it.color;
       ev.textContent = it.label;
       ev.title = it.label;
       cell.appendChild(ev);
@@ -672,9 +710,10 @@ function renderDayDetail() {
     const timePart = e.time ? `<span class="d-time">${formatTime(e.time)} Uhr</span> ` : "";
     const repPart = e.repeat ? ` <span class="repeat-badge">↻ ${REPEAT_LABELS[e.repeat] || ""}</span>` : "";
     const delTitle = e.repeat ? "Serie löschen" : "Löschen";
+    const colorStyle = e.color ? ` style="background:${e.color};color:#fff"` : "";
     html += `
       <div class="d-event">
-        <span class="d-left"><span class="tag ${e.type}">${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
+        <span class="d-left"><span class="tag ${e.type}"${colorStyle}>${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
         <button class="del-btn" data-del-event="${e.id}" title="${delTitle}">✕</button>
       </div>`;
   });
@@ -807,8 +846,10 @@ document.getElementById("event-form").addEventListener("submit", (e) => {
   const type = document.getElementById("event-type").value;
   const repeat = document.getElementById("event-repeat").value || null;
   const repeatUntil = (repeat ? document.getElementById("event-repeat-until").value : "") || null;
+  const colorOn = document.getElementById("event-color-on").checked;
+  const color = colorOn ? document.getElementById("event-color").value : null;
   if (!date || !title) return;
-  state.events.push({ id: uid(), date, time, title, type, repeat, repeatUntil });
+  state.events.push({ id: uid(), date, time, title, type, repeat, repeatUntil, color });
   saveState();
   selectedDate = date;
   const d = new Date(date + "T00:00:00");
@@ -818,6 +859,7 @@ document.getElementById("event-form").addEventListener("submit", (e) => {
   document.getElementById("event-time").value = "";
   document.getElementById("event-repeat").value = "";
   document.getElementById("event-repeat-until").value = "";
+  document.getElementById("event-color-on").checked = false;
   renderCalendar();
 });
 
@@ -929,11 +971,60 @@ function gradeHint(m) {
   return `<p class="grade-hint ${cls}">${text}</p>`;
 }
 
+// Teilnoten-Editor für ein Modul (Punkt 4)
+function renderGradeComponents(wrap, m) {
+  const comps = m.gradeComponents || [];
+  const totalW = comps.reduce((a, c) => a + (c.weight || 0), 0);
+  const rows = comps.map((c) => `
+    <div class="gc-row" data-gc="${c.id}">
+      <input type="text" class="gc-label" data-gc-label placeholder="z. B. Klausur" value="${escapeHtml(c.label || "")}" aria-label="Bezeichnung der Teilnote" />
+      <input type="number" class="gc-grade" data-gc-grade step="0.1" min="1" max="5" placeholder="Note" value="${c.grade ?? ""}" aria-label="Note der Teilnote" />
+      <input type="number" class="gc-weight" data-gc-weight min="0" step="5" placeholder="Gewicht %" value="${c.weight ?? ""}" aria-label="Gewicht in Prozent" />
+      <button class="del-btn" data-gc-del title="Teilnote löschen" aria-label="Teilnote löschen">✕</button>
+    </div>`).join("");
+
+  const warn = (comps.length && totalW !== 100)
+    ? `<p class="gc-warn">Summe der Gewichte: ${totalW}% (empfohlen: 100%). Die Endnote wird anteilig berechnet.</p>` : "";
+
+  wrap.innerHTML = `
+    ${comps.length ? `<div class="gc-head">Teilnoten (Endnote wird gewichtet berechnet)</div>` : ""}
+    ${rows}
+    ${warn}
+    <button class="link-btn" data-gc-add>+ Teilnote hinzufügen</button>`;
+
+  wrap.querySelector("[data-gc-add]").addEventListener("click", () => {
+    m.gradeComponents.push({ id: uid(), label: "", grade: null, weight: 0 });
+    syncComponentGrade(m); saveState(); renderModules();
+  });
+  wrap.querySelectorAll(".gc-row").forEach((row) => {
+    const id = row.dataset.gc;
+    const c = m.gradeComponents.find((x) => x.id === id);
+    if (!c) return;
+    row.querySelector("[data-gc-label]").addEventListener("change", (ev) => {
+      c.label = ev.target.value.trim(); saveState();
+    });
+    row.querySelector("[data-gc-grade]").addEventListener("change", (ev) => {
+      const v = parseFloat(String(ev.target.value).replace(",", "."));
+      c.grade = isNaN(v) ? null : v; syncComponentGrade(m); saveState(); renderModules();
+    });
+    row.querySelector("[data-gc-weight]").addEventListener("change", (ev) => {
+      c.weight = parseFloat(ev.target.value) || 0; syncComponentGrade(m); saveState(); renderModules();
+    });
+    row.querySelector("[data-gc-del]").addEventListener("click", () => {
+      m.gradeComponents = m.gradeComponents.filter((x) => x.id !== id);
+      syncComponentGrade(m); saveState(); renderModules();
+    });
+  });
+}
+
 function renderModuleCard(m) {
   const pct = moduleProgress(m);
   const done = m.tasks.filter((t) => t.done).length;
+  const hasComponents = m.gradeComponents && m.gradeComponents.length > 0;
   const card = document.createElement("div");
   card.className = "module-card" + (m.completed ? " completed" : "") + (m.collapsed ? " collapsed" : "");
+  card.draggable = true;
+  card.dataset.moduleId = m.id;
 
   card.innerHTML = `
     <div class="module-head">
@@ -954,12 +1045,13 @@ function renderModuleCard(m) {
     <div class="module-body">
       <div class="module-controls">
         <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Abgeschlossen</label>
-        <label>Note: <input type="number" class="grade-input" data-grade step="0.1" min="1" max="5" placeholder="—" value="${m.grade ?? ""}"/></label>
+        <label>Note: <input type="number" class="grade-input" data-grade step="0.1" min="1" max="5" placeholder="—" value="${m.grade ?? ""}" ${hasComponents ? "disabled title='Wird aus Teilnoten berechnet'" : ""}/></label>
         <label>Wunschnote: <input type="number" class="grade-input" data-target step="0.1" min="1" max="5" placeholder="—" value="${m.targetGrade ?? ""}"/></label>
         <label>ECTS: <input type="number" class="grade-input" data-ects step="0.5" min="0" placeholder="0" value="${m.ects || ""}"/></label>
         <label>Semester: <input type="text" class="semester-edit" data-semester placeholder="—" value="${m.semester ? escapeHtml(m.semester) : ""}"/></label>
       </div>
       ${gradeHint(m)}
+      <div class="grade-components"></div>
       <ul class="checklist"></ul>
       <form class="add-task-form"><input type="text" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
     </div>`;
@@ -969,11 +1061,17 @@ function renderModuleCard(m) {
     m.collapsed = !m.collapsed; saveState(); renderModules();
   });
 
+  // Teilnoten-Editor (Punkt 4)
+  const gc = card.querySelector(".grade-components");
+  renderGradeComponents(gc, m);
+
   // Checklist items (each as a block: the task row + date + subtasks)
   const ul = card.querySelector(".checklist");
   m.tasks.forEach((t) => {
     const li = document.createElement("li");
     li.className = "task-block";
+    li.draggable = true;
+    li.dataset.taskId = t.id;
     const cbId = `t-${t.id}`;
     const subDone = t.subtasks.filter((s) => s.done).length;
     const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
@@ -1047,6 +1145,23 @@ function renderModuleCard(m) {
         saveState(); renderModules();
       });
     });
+
+    // Drag & Drop der Aufgaben innerhalb des Moduls (Punkt 6)
+    li.addEventListener("dragstart", (e) => {
+      e.stopPropagation(); dragTaskId = t.id; li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    li.addEventListener("dragend", (e) => { e.stopPropagation(); dragTaskId = null; li.classList.remove("dragging"); });
+    li.addEventListener("dragover", (e) => {
+      if (!dragTaskId || dragTaskId === t.id) return;
+      e.preventDefault(); e.stopPropagation(); li.classList.add("drop-target");
+    });
+    li.addEventListener("dragleave", () => li.classList.remove("drop-target"));
+    li.addEventListener("drop", (e) => {
+      e.preventDefault(); e.stopPropagation(); li.classList.remove("drop-target");
+      reorderTask(m, dragTaskId, t.id);
+    });
+
     ul.appendChild(li);
   });
 
@@ -1091,7 +1206,50 @@ function renderModuleCard(m) {
     });
   });
 
+  // Drag & Drop zum Umsortieren der Module (Punkt 6)
+  card.addEventListener("dragstart", (e) => {
+    dragModuleId = m.id; card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+  });
+  card.addEventListener("dragend", () => { dragModuleId = null; card.classList.remove("dragging"); });
+  card.addEventListener("dragover", (e) => {
+    if (!dragModuleId || dragModuleId === m.id) return;
+    e.preventDefault(); card.classList.add("drop-target");
+  });
+  card.addEventListener("dragleave", () => card.classList.remove("drop-target"));
+  card.addEventListener("drop", (e) => {
+    e.preventDefault(); card.classList.remove("drop-target");
+    reorderModule(dragModuleId, m.id);
+  });
+
   return card;
+}
+
+let dragModuleId = null;
+let dragTaskId = null;
+// Verschiebt das Modul mit `fromId` direkt vor das Modul mit `toId`.
+function reorderModule(fromId, toId) {
+  if (!fromId || fromId === toId) return;
+  const arr = state.modules;
+  const from = arr.findIndex((x) => x.id === fromId);
+  const to = arr.findIndex((x) => x.id === toId);
+  if (from < 0 || to < 0) return;
+  const [moved] = arr.splice(from, 1);
+  const newTo = arr.findIndex((x) => x.id === toId);
+  arr.splice(newTo, 0, moved);
+  saveState(); renderModules();
+}
+// Verschiebt eine Aufgabe innerhalb ihres Moduls vor die Ziel-Aufgabe.
+function reorderTask(m, fromId, toId) {
+  if (!fromId || fromId === toId) return;
+  const arr = m.tasks;
+  const from = arr.findIndex((x) => x.id === fromId);
+  const to = arr.findIndex((x) => x.id === toId);
+  if (from < 0 || to < 0) return;
+  const [moved] = arr.splice(from, 1);
+  const newTo = arr.findIndex((x) => x.id === toId);
+  arr.splice(newTo, 0, moved);
+  saveState(); renderModules();
 }
 
 /* ============================================================
@@ -1369,6 +1527,26 @@ let statsRefDate = todayIso();
 function renderStudyToday() {
   // "Heute gelernt" reflects the real current day (live counter target).
   document.getElementById("study-today").textContent = formatDuration(stats.daily[todayIso()] || 0);
+  renderStreak();
+}
+
+// Lern-Serie: aufeinanderfolgende Tage mit Lernzeit, bis einschließlich heute (Punkt 7).
+function studyStreak() {
+  let streak = 0;
+  const d = new Date();
+  // Heute zählt nur, wenn schon gelernt; sonst ab gestern rückwärts zählen.
+  if (!(stats.daily[isoOf(d)] > 0)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 1000; i++) {
+    if (stats.daily[isoOf(d)] > 0) { streak++; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  return streak;
+}
+function renderStreak() {
+  const el = document.getElementById("study-streak");
+  if (!el) return;
+  const s = studyStreak();
+  el.textContent = s > 0 ? `🔥 ${s} ${s === 1 ? "Tag" : "Tage"} in Folge` : "Noch keine aktuelle Lern-Serie";
 }
 
 // Kurzes Label für den Bezugstag, z. B. "Heute" oder "12.11.2026".
@@ -1564,8 +1742,16 @@ function renderForecast(target) {
   if (f.done) { el.textContent = "Alle ECTS-tragenden Module sind benotet — keine Prognose nötig."; return; }
   if (f.remainingEcts === 0) { el.textContent = "Keine unbenoteten Module mit ECTS vorhanden."; return; }
   if (f.impossible) { el.textContent = `Nicht erreichbar: Selbst mit 1,0 in den restlichen ${f.remainingEcts} ECTS ist dieses Ziel rechnerisch nicht mehr möglich.`; return; }
-  if (f.tooEasy) { el.textContent = `Bereits sicher: Das Ziel ist selbst mit 5,0 in den restlichen ${f.remainingEcts} ECTS erreicht.`; return; }
-  el.textContent = `Du brauchst in den verbleibenden ${f.remainingEcts} ECTS im Schnitt ${commaNum(f.needed)} (oder besser).`;
+  let msg;
+  if (f.tooEasy) msg = `Bereits sicher: Das Ziel ist selbst mit 5,0 in den restlichen ${f.remainingEcts} ECTS erreicht.`;
+  else msg = `Du brauchst in den verbleibenden ${f.remainingEcts} ECTS im Schnitt ${commaNum(f.needed)} (oder besser).`;
+
+  // Zusätzlich: möglicher Endschnitt-Bereich (Punkt 5)
+  const r = gradeRange();
+  if (r && r.openEcts > 0) {
+    msg += ` · Möglicher Endschnitt: ${commaNum(r.best)}–${commaNum(r.worst)}`;
+  }
+  el.textContent = msg;
 }
 const forecastForm = document.getElementById("forecast-form");
 if (forecastForm) {
@@ -1588,6 +1774,39 @@ if (icsBtn) {
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });
+}
+
+/* ----- Druck-/PDF-Ansicht der Semesterübersicht (Punkt 9) ----- */
+function buildPrintView() {
+  const pv = document.getElementById("print-view");
+  if (!pv) return;
+  // Gruppiert nach Semester (unbenannte zuletzt).
+  const groups = {};
+  state.modules.forEach((m) => { const key = m.semester || "Ohne Semester"; (groups[key] = groups[key] || []).push(m); });
+  const keys = Object.keys(groups).sort((a, b) => (a === "Ohne Semester") - (b === "Ohne Semester") || a.localeCompare(b));
+  const gpa = computeGpa();
+  const totalEcts = state.modules.reduce((a, m) => a + (m.ects || 0), 0);
+  const doneEcts = state.modules.filter((m) => m.completed).reduce((a, m) => a + (m.ects || 0), 0);
+  let html = `<h1>Studienübersicht</h1>
+    <p class="pv-meta">Stand: ${formatDate(todayIso())} · ECTS gesamt: ${totalEcts} · davon abgeschlossen: ${doneEcts}${gpa ? ` · Notenschnitt: ${commaNum(gpa.value, 2)}` : ""}</p>`;
+  keys.forEach((k) => {
+    html += `<h2>${escapeHtml(k)}</h2>
+      <table class="pv-table"><thead><tr><th>Modul</th><th>ECTS</th><th>Note</th><th>Status</th></tr></thead><tbody>`;
+    groups[k].forEach((m) => {
+      html += `<tr>
+        <td>${escapeHtml(m.name)}</td>
+        <td>${m.ects || "—"}</td>
+        <td>${typeof m.grade === "number" ? commaNum(m.grade) : "—"}</td>
+        <td>${m.completed ? "abgeschlossen" : (m.pinned ? "in Bearbeitung" : "offen")}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  });
+  pv.innerHTML = html;
+}
+const printBtn = document.getElementById("print-btn");
+if (printBtn) {
+  printBtn.addEventListener("click", () => { buildPrintView(); window.print(); });
 }
 
 /* ----- Backup-Erinnerung / "zuletzt gesichert" (Punkt 4) ----- */
@@ -1800,7 +2019,21 @@ function renderSyncUI() {
   } else {
     out.hidden = false; inn.hidden = true;
   }
+  renderConnBadge();
 }
+
+// Online/Offline-Anzeige (Punkt 3)
+function renderConnBadge() {
+  const el = document.getElementById("conn-badge");
+  if (!el) return;
+  const online = navigator.onLine !== false;
+  el.className = "conn-badge " + (online ? "online" : "offline");
+  el.textContent = online
+    ? (syncUser ? "● Online · Sync aktiv" : "● Online")
+    : "● Offline · Änderungen werden lokal gespeichert";
+}
+window.addEventListener("online", () => { renderConnBadge(); if (syncUser) pullAndMerge(); });
+window.addEventListener("offline", renderConnBadge);
 
 // Zustand als reines Datenpaket (ohne Laufzeit-Krempel) für den Upload.
 function syncPayload() {
@@ -1870,6 +2103,19 @@ async function uploadState() {
 }
 
 // Remote laden und bei Bedarf einspielen (neuere Daten gewinnen), sonst hochladen.
+// Merkt den zuletzt gesehenen Remote-Stand, um echte Konflikte zu erkennen.
+let lastSyncedRemoteTs = 0;
+const SYNC_BACKUP_KEY = "study-tracker-sync-backup";
+
+// Sicherungs-Snapshot des aktuellen lokalen Stands, bevor Remote überschreibt (Punkt 2).
+function backupBeforeOverwrite() {
+  try {
+    localStorage.setItem(SYNC_BACKUP_KEY, JSON.stringify({
+      at: Date.now(), data: syncPayload(),
+    }));
+  } catch (e) {}
+}
+
 async function pullAndMerge() {
   if (!sb || !syncUser) return;
   try {
@@ -1880,19 +2126,49 @@ async function pullAndMerge() {
     if (data && data.data) {
       const remote = data.data;
       const remoteTs = remote.updatedAt || new Date(data.updated_at).getTime() || 0;
+
       if (remoteTs > localTs) {
-        applyRemote(remote);
-        setSyncStatus("Aktualisiert vom Server (neuere Daten übernommen).");
+        // Konflikt: Remote ist neuer UND lokal gab es seit dem letzten Sync eigene Änderungen.
+        const localChangedSinceSync = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0;
+        if (localChangedSinceSync) {
+          backupBeforeOverwrite();
+          const ok = confirm(
+            "Konflikt erkannt: Auf einem anderen Gerät wurden neuere Änderungen gespeichert.\n\n" +
+            "• OK: Server-Stand übernehmen (dein lokaler Stand wird als Sicherung behalten).\n" +
+            "• Abbrechen: deinen lokalen Stand behalten und hochladen."
+          );
+          if (ok) { applyRemote(remote); lastSyncedRemoteTs = remoteTs; setSyncStatus("Server-Stand übernommen · lokale Sicherung erstellt."); }
+          else { await uploadState(); lastSyncedRemoteTs = state.updatedAt || Date.now(); setSyncStatus("Lokalen Stand behalten und hochgeladen."); }
+        } else {
+          backupBeforeOverwrite();
+          applyRemote(remote);
+          lastSyncedRemoteTs = remoteTs;
+          setSyncStatus("Aktualisiert vom Server (neuere Daten übernommen).");
+        }
       } else {
         await uploadState();
+        lastSyncedRemoteTs = state.updatedAt || Date.now();
       }
     } else {
       // Noch nichts auf dem Server → lokalen Stand hochladen.
       await uploadState();
+      lastSyncedRemoteTs = state.updatedAt || Date.now();
     }
+    renderBackupReminder();
   } catch (e) {
     setSyncStatus("Sync-Fehler: " + (e.message || e));
   }
+}
+
+// Lokale Sicherung (vor letztem Überschreiben) wiederherstellen.
+function restoreSyncBackup() {
+  let snap = null;
+  try { snap = JSON.parse(localStorage.getItem(SYNC_BACKUP_KEY) || "null"); } catch (e) {}
+  if (!snap || !snap.data) { setSyncStatus("Keine Sicherung vorhanden."); return; }
+  if (!confirm(`Lokale Sicherung vom ${new Date(snap.at).toLocaleString("de-DE")} wiederherstellen? Der aktuelle Stand wird ersetzt.`)) return;
+  applyRemote(snap.data);
+  saveState(); // als neuesten Stand markieren → wird beim nächsten Sync hochgeladen
+  setSyncStatus("Lokale Sicherung wiederhergestellt.");
 }
 
 async function initSync() {
@@ -1949,6 +2225,8 @@ if (syncLoginForm) {
 }
 const syncNowBtn = document.getElementById("sync-now-btn");
 if (syncNowBtn) syncNowBtn.addEventListener("click", () => pullAndMerge());
+const syncRestoreBtn = document.getElementById("sync-restore-btn");
+if (syncRestoreBtn) syncRestoreBtn.addEventListener("click", () => restoreSyncBackup());
 const syncLogoutBtn = document.getElementById("sync-logout-btn");
 if (syncLogoutBtn) {
   syncLogoutBtn.addEventListener("click", async () => {
@@ -1957,6 +2235,49 @@ if (syncLogoutBtn) {
     syncUser = null;
     renderSyncUI();
     setSyncStatus("Abgemeldet. Die App läuft weiterhin lokal.");
+  });
+}
+
+/* ============================================================
+   FEHLER-LOGGING (Punkt 12, leichtgewichtig & ohne externen Dienst)
+   Fängt unerwartete Fehler, zeigt einen Hinweis und speichert die
+   letzten Einträge lokal (Einstellungen zeigt sie optional an).
+   ============================================================ */
+const ERRLOG_KEY = "study-tracker-errors";
+function logError(kind, msg, extra) {
+  try {
+    const log = JSON.parse(localStorage.getItem(ERRLOG_KEY) || "[]");
+    log.unshift({ at: new Date().toISOString(), kind, msg: String(msg).slice(0, 300), extra: extra ? String(extra).slice(0, 300) : null });
+    localStorage.setItem(ERRLOG_KEY, JSON.stringify(log.slice(0, 20))); // nur die letzten 20
+  } catch (e) {}
+}
+window.addEventListener("error", (e) => {
+  logError("error", e.message, e.filename + ":" + e.lineno);
+  if (typeof showSnackbar === "function") showSnackbar("Ein unerwarteter Fehler ist aufgetreten (lokal protokolliert).");
+});
+window.addEventListener("unhandledrejection", (e) => {
+  logError("promise", (e.reason && e.reason.message) || e.reason);
+});
+// Button in den Einstellungen zum Ansehen/Leeren des Fehlerprotokolls.
+const errShowBtn = document.getElementById("err-show-btn");
+if (errShowBtn) {
+  errShowBtn.addEventListener("click", () => {
+    const box = document.getElementById("err-log");
+    if (!box) return;
+    let log = [];
+    try { log = JSON.parse(localStorage.getItem(ERRLOG_KEY) || "[]"); } catch (e) {}
+    box.hidden = false;
+    box.textContent = log.length
+      ? log.map((l) => `${new Date(l.at).toLocaleString("de-DE")} — [${l.kind}] ${l.msg}`).join("\n")
+      : "Keine Fehler protokolliert. 🎉";
+  });
+}
+const errClearBtn = document.getElementById("err-clear-btn");
+if (errClearBtn) {
+  errClearBtn.addEventListener("click", () => {
+    try { localStorage.removeItem(ERRLOG_KEY); } catch (e) {}
+    const box = document.getElementById("err-log");
+    if (box) { box.hidden = false; box.textContent = "Fehlerprotokoll geleert."; }
   });
 }
 

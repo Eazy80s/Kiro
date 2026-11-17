@@ -547,3 +547,60 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font: inherit; text-decoration: underline; padding: 0;
 }
 .link-btn:hover { color: var(--accent-2); }
+
+/* ============================================================
+   Drittes Verbesserungs-Paket
+   ============================================================ */
+
+/* Teilnoten-Editor (Punkt 4) */
+.grade-components { margin: 8px 0 4px; }
+.gc-head { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.gc-row { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+.gc-label { flex: 1; min-width: 120px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
+.gc-grade, .gc-weight { width: 90px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
+.gc-warn { font-size: 0.78rem; color: #b45309; margin: 2px 0 6px; }
+[data-theme="dark"] .gc-warn { color: #fde68a; }
+
+/* Eigene Terminfarbe (Punkt 8) */
+.color-label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.color-label input[type="color"] { width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 6px; padding: 0; background: none; cursor: pointer; }
+
+/* Online/Offline-Badge (Punkt 3) */
+.conn-badge { display: inline-block; font-size: 0.8rem; margin: 6px 0; }
+.conn-badge.online { color: var(--accent-2); }
+.conn-badge.offline { color: #d97706; }
+
+/* Lern-Serie (Punkt 7) */
+.study-streak { font-size: 0.9rem; font-weight: 600; margin-top: -4px; margin-bottom: 8px; }
+
+/* Drag & Drop (Punkt 6) */
+.module-card.dragging, .task-block.dragging { opacity: 0.5; }
+.module-card.drop-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.task-block.drop-target { outline: 2px dashed var(--accent); outline-offset: 1px; border-radius: 6px; }
+.module-card[draggable="true"] .module-head h3 { cursor: grab; }
+
+/* Fehlerprotokoll (Punkt 12) */
+.err-log {
+  white-space: pre-wrap; word-break: break-word; font-size: 0.78rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; margin-top: 8px; max-height: 240px; overflow: auto; color: var(--text);
+}
+
+/* ============================================================
+   Druck-/PDF-Ansicht (Punkt 9)
+   Standard: versteckt. Beim Drucken: nur diese Ansicht zeigen.
+   ============================================================ */
+.print-view { display: none; }
+.print-view h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.print-view .pv-meta { color: #555; font-size: 0.9rem; margin-bottom: 16px; }
+.print-view h2 { font-size: 1.05rem; margin: 16px 0 6px; }
+.print-view .pv-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.print-view .pv-table th, .print-view .pv-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 0.9rem; }
+.print-view .pv-table th { background: #f0f0f0; }
+
+@media print {
+  /* Nur die Druckansicht anzeigen, App-UI ausblenden */
+  body > .layout, #snackbar { display: none !important; }
+  .print-view { display: block !important; color: #000; padding: 0; }
+  @page { margin: 1.5cm; }
+}

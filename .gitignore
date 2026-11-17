@@ -8,3 +8,7 @@ Thumbs.db
 
 # Kiro local artifacts
 .kiro/
+
+# Test-Artefakte
+.chrome-test-profile/
+node_modules/

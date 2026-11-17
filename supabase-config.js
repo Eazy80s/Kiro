@@ -14,6 +14,6 @@
    NUR LOKAL — der Sync-Bereich zeigt dann einen Hinweis.
    ============================================================ */
 window.SUPABASE_CONFIG = {
-  url: "DEINE_SUPABASE_PROJECT_URL",
-  anonKey: "DEIN_SUPABASE_ANON_KEY",
+  url: "https://nypbibhvhfjkaazdxkku.supabase.co",
+  anonKey: "sb_publishable_QRVInJoczlWezyA9sVfwTg_F1325eDp",
 };

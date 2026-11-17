@@ -11,6 +11,19 @@
   --radius: 10px;
 }
 
+/* Dunkles Theme (Punkt 9) */
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #818cf8;
+  --accent-2: #4ade80;
+  --danger: #f87171;
+  --border: #334155;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -408,3 +421,68 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .del-btn:hover { color: var(--danger); background: var(--surface-2); }
 
 .empty-state { color: var(--muted); font-size: 0.88rem; padding: 18px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
+
+/* ============================================================
+   Zusätzliche Komponenten (Verbesserungs-Paket)
+   ============================================================ */
+
+/* Modul-Suche (Punkt 7) */
+.module-search {
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 9px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.module-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+
+/* Noten-Hinweis je Modul (Punkt 4) */
+.grade-hint { font-size: 0.82rem; margin: 4px 0 2px; }
+.grade-hint.ok { color: var(--accent-2); }
+.grade-hint.warn { color: #d97706; }
+.grade-hint.bad { color: var(--danger); }
+
+/* Pomodoro: Modul-Auswahl (Punkt 6) */
+.pomo-module-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.pomo-module-row select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; font-family: inherit;
+}
+
+/* Wiederholungs-Kennzeichnung (Punkt 5) */
+.repeat-badge { font-size: 0.72rem; color: var(--muted); }
+
+/* Theme-Umschalter (Punkt 9) */
+.theme-switch { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+.theme-switch .ghost-btn.active,
+[data-theme-btn].active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Snackbar mit „Rückgängig“ (Punkt 3) */
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(140%);
+  background: #111827;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  z-index: 1000;
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  max-width: calc(100vw - 32px);
+  font-size: 0.9rem;
+}
+.snackbar.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.snack-undo {
+  background: transparent; border: none; color: #93c5fd;
+  font-weight: 600; cursor: pointer; font-size: 0.9rem; padding: 2px 4px;
+}
+.snack-undo:hover { color: #bfdbfe; text-decoration: underline; }

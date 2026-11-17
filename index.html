@@ -15,6 +15,17 @@
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
 
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Theme früh setzen, damit es beim Laden nicht kurz hell aufblitzt.
+    (function () {
+      try {
+        var t = localStorage.getItem("study-tracker-theme") || "auto";
+        var dark = t === "dark" || (t === "auto" && window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="layout">
@@ -26,6 +37,7 @@
         <button class="tab-btn" data-tab="modules">Module</button>
         <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
         <button class="tab-btn" data-tab="data">Daten</button>
+        <button class="tab-btn" data-tab="settings">Einstellungen</button>
       </nav>
     </aside>
 
@@ -97,6 +109,12 @@
             <option value="lecture">Vorlesung</option>
             <option value="other">Sonstiges</option>
           </select>
+          <select id="event-repeat" title="Wiederholung">
+            <option value="">Keine Wiederholung</option>
+            <option value="daily">Täglich</option>
+            <option value="weekly">Wöchentlich</option>
+            <option value="monthly">Monatlich</option>
+          </select>
           <button type="submit" class="primary-btn">Hinzufügen</button>
         </form>
       </div>
@@ -109,6 +127,7 @@
         <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
         <button type="submit" class="primary-btn">Modul hinzufügen</button>
       </form>
+      <input type="search" id="module-search" class="module-search" placeholder="🔍 Module & Aufgaben durchsuchen …" />
       <div id="modules-list" class="modules-list"></div>
     </section>
 
@@ -126,6 +145,10 @@
           <button id="pomo-start" class="primary-btn">Start</button>
           <button id="pomo-reset" class="secondary-btn">Zurücksetzen</button>
         </div>
+        <div class="pomo-module-row">
+          <label for="pomo-module" class="muted">Lernzeit zählt für:</label>
+          <select id="pomo-module"><option value="">Ohne Modulzuordnung</option></select>
+        </div>
         <div id="pomo-count" class="pomo-count">Abgeschlossene Fokus-Einheiten: 0</div>
       </div>
 
@@ -142,7 +165,12 @@
           <button id="stats-today" class="ghost-btn">Heute</button>
         </div>
         <div id="study-stats" class="study-stats"></div>
-        <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen.</p>
+        <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen. Die Balken-Ziele kannst du in den Einstellungen anpassen.</p>
+      </div>
+
+      <h2>Lernzeit je Modul</h2>
+      <div class="pomodoro-card">
+        <div id="study-per-module" class="study-stats"></div>
       </div>
 
       <h2>Eigene Zeiten</h2>
@@ -178,8 +206,48 @@
       <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
       <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
     </section>
+
+    <!-- EINSTELLUNGEN -->
+    <section id="settings" class="tab-panel">
+      <h2>Darstellung</h2>
+      <p class="muted">Wähle das Erscheinungsbild der App.</p>
+      <div class="theme-switch">
+        <button data-theme-btn="light" class="ghost-btn">☀️ Hell</button>
+        <button data-theme-btn="dark" class="ghost-btn">🌙 Dunkel</button>
+        <button data-theme-btn="auto" class="ghost-btn">🖥️ Automatisch</button>
+      </div>
+
+      <h2>Lernzeit-Ziele</h2>
+      <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
+      <form id="goals-form" class="pomo-settings">
+        <label>Tag
+          <input type="number" id="goal-day" min="1" max="24" step="0.5" />
+        </label>
+        <label>Woche
+          <input type="number" id="goal-week" min="1" max="168" step="1" />
+        </label>
+        <label>Monat
+          <input type="number" id="goal-month" min="1" max="744" step="1" />
+        </label>
+        <label>Jahr
+          <input type="number" id="goal-year" min="1" max="8760" step="1" />
+        </label>
+        <button type="submit" class="primary-btn">Ziele speichern</button>
+      </form>
+      <p id="goals-status" class="muted"></p>
+
+      <h2>Erinnerungen</h2>
+      <p class="muted">Erhalte eine Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Funktioniert, solange die App in einem Tab geöffnet ist.</p>
+      <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
+
+      <h2>Notenskala</h2>
+      <p class="muted">Diese App verwendet die deutsche Skala 1,0–5,0 (bestanden bis einschließlich 4,0). Pro Modul kannst du eine Wunschnote hinterlegen.</p>
+    </section>
     </main>
   </div>
+
+  <!-- Snackbar für „Rückgängig“ -->
+  <div id="snackbar" class="snackbar" aria-live="polite"></div>
 
   <script src="app.js"></script>
   <script>

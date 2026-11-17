@@ -1,38 +1,61 @@
-# 🎓 Studie Files — Study Tracker
+# 🎓 Studien-Tracker
 
-A simple, self-contained study management app that runs entirely in your browser.
-No installation, no server, no account needed. Your data is saved locally in your browser.
+Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Installation, kein Server, kein Konto nötig. Deine Daten werden lokal im Browser gespeichert.
 
-## Features
+## Funktionen
 
-- **📅 Calendar** — add and view entries (exams, deadlines, lectures, other) on a monthly calendar. Click an entry to delete it.
-- **📚 Modules** — create a module for each of your courses.
-- **✅ Checklists** — give each module a checklist; add items and tick them off as you go.
-- **📊 Module progress bar** — automatically calculated from how many checklist items you've ticked.
-- **📊 Overall progress bar** — your total progress, averaged across all your modules, shown on the Dashboard along with an "Upcoming" list of your next entries.
+- **📅 Kalender** – Einträge (Prüfung, Abgabe, Vorlesung, Sonstiges) mit optionaler **Uhrzeit** und **Wiederholung** (täglich/wöchentlich/monatlich). Modulaufgaben lassen sich auf Tage planen.
+- **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
+- **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
+- **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul.
+- **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
+- **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich und **je Modul**, mit einstellbaren **Zielen**.
+- **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben.
+- **⏳ Prüfungs-Countdown** und **Demnächst**-Liste.
+- **🌓 Theme** – hell / dunkel / automatisch.
+- **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben.
+- **💾 Daten** – Export/Import als `.json`, Zurücksetzen; **Löschen mit „Rückgängig“**.
+- **📱 Installierbar** (PWA) – auf dem iPhone „Zum Home-Bildschirm“, funktioniert offline (benötigt HTTPS-Hosting, siehe unten).
 
-## How to run it
+## Starten (lokal)
 
-1. Download or clone this repository.
-2. Double-click **`index.html`** — it opens in your default browser.
+1. Repository herunterladen oder klonen.
+2. **`index.html`** doppelklicken – öffnet sich im Standardbrowser.
 
-That's it. No build step, no dependencies.
+Kein Build, keine Abhängigkeiten.
 
-## How your data is saved
+## Auf dem iPhone installieren (HTTPS-Hosting)
 
-Everything you enter is stored in your browser's **local storage**:
+Zum Installieren als App braucht es eine **HTTPS-Adresse** (lokale Dateien reichen dafür nicht). Zwei einfache Wege:
 
-- Close the tab and reopen it later → your data is still there.
-- It is tied to *that browser on that computer*. A different browser or device starts fresh.
+- **Netlify Drop (kostenlos, ohne Konto):** Gehe auf <https://app.netlify.com/drop> und ziehe den **Projektordner** (mit `index.html`, `styles.css`, `app.js`, `manifest.webmanifest`, `sw.js`, den Icons) in das Fenster. Du erhältst sofort eine HTTPS-URL. Diese in Safari öffnen → **Teilen → Zum Home-Bildschirm**.
+- **GitHub Pages:** nur möglich, wenn das Repo **öffentlich** ist (oder mit bezahltem Plan für private Repos). Dann: Repo → Settings → Pages → Branch `main`, Ordner `/`.
 
-## Project structure
+## Daten
 
-| File | Purpose |
+Alles liegt im **localStorage** des jeweiligen Browsers:
+
+- Tab schließen und später öffnen → Daten sind noch da.
+- Gebunden an *diesen Browser auf diesem Gerät*. Für Übertragung: **Export/Import** nutzen (z. B. über iCloud Drive).
+
+## Tests
+
+Automatisierte Tests der Rechenlogik (Fortschritt, GPA, Dauer, Wiederholungen):
+
+```bash
+npm test      # oder: node tests/logic.test.js
+```
+
+## Projektstruktur
+
+| Datei | Zweck |
 |------|---------|
-| `index.html` | Page structure and layout |
-| `styles.css` | Styling (dark theme) |
-| `app.js` | All app logic + data persistence |
+| `index.html` | Struktur & Layout |
+| `styles.css` | Styling (hell/dunkel über CSS-Variablen) |
+| `app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
+| `manifest.webmanifest`, `sw.js`, `icon*` | PWA (installierbar/offline) |
+| `tests/logic.test.js` | Automatisierte Tests |
 
-## License
+## Lizenz
 
-Personal project — use it however you like.
+MIT – nutze es, wie du magst.

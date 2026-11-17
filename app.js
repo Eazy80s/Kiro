@@ -1,14 +1,26 @@
 /* ============================================================
-   Study Tracker — data persisted in localStorage
-   Data model (v3):
-     module:  { id, name, ects, grade, completed, pinned, tasks: [task] }
-     task:    { id, text, done, pinned, subtasks: [subtask] }
+   Studien-Tracker — Daten im localStorage
+   Datenmodell (v4):
+     module:  { id, name, ects, grade, targetGrade, completed, pinned, collapsed, tasks:[task] }
+     task:    { id, text, done, date, subtasks:[subtask] }
      subtask: { id, text, done }
-     event:   { id, date (YYYY-MM-DD), title, type }
-   Pomodoro durations (minutes) are stored under a separate key.
+     event:   { id, date, time, title, type, repeat }
+   Separate Keys: Pomodoro-Zeiten, Lernstatistik (inkl. Ziele & Lernzeit je Modul), Theme.
+
+   Aufbau dieser Datei (in einem IIFE gekapselt, kein globaler Namensraum):
+     1) Persistenz & Migration      2) Fortschritt/Noten-Helfer
+     3) Datums-/Wiederhol-Helfer    4) Navigation & Theme
+     5) Dashboard                   6) Kalender
+     7) Module & Checklisten        8) Daten (Export/Import/Reset)
+     9) Pomodoro & Lernzeit        10) Snackbar & Utilities & Boot
    ============================================================ */
+(function () {
+"use strict";
 
 const STORAGE_KEY = "study-tracker-v1";
+
+// Current data schema version. Bump when the shape changes so migrations stay explicit.
+const SCHEMA_VERSION = 4;
 
 let state = loadState();
 
@@ -29,11 +41,16 @@ function migrate(data) {
   if (!data || typeof data !== "object") data = {};
   if (!Array.isArray(data.modules)) data.modules = [];
   if (!Array.isArray(data.events)) data.events = [];
-  // Events gain an optional time ("HH:MM" or null).
-  data.events.forEach((e) => { if (e.time === undefined) e.time = null; });
+  // Events gain an optional time ("HH:MM" or null) and recurrence rule.
+  data.events.forEach((e) => {
+    if (e.time === undefined) e.time = null;
+    // repeat: null | "daily" | "weekly" | "monthly" (recurs from e.date forward)
+    if (e.repeat === undefined) e.repeat = null;
+  });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
     if (m.grade === undefined) m.grade = null;
+    if (m.targetGrade === undefined) m.targetGrade = null; // Wunschnote
     if (typeof m.completed !== "boolean") m.completed = false;
     if (typeof m.pinned !== "boolean") m.pinned = false;
     if (typeof m.collapsed !== "boolean") m.collapsed = false;
@@ -47,6 +64,7 @@ function migrate(data) {
       t.subtasks.forEach((s) => { if (typeof s.done !== "boolean") s.done = false; });
     });
   });
+  data.schemaVersion = SCHEMA_VERSION;
   return data;
 }
 
@@ -119,8 +137,6 @@ function todayIso() { return isoOf(new Date()); }
 function formatDate(iso) { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; }
 // Normalize a stored time to "HH:MM" or empty string.
 function formatTime(t) { return t ? t : ""; }
-// Sort key combining date + time so timed events order correctly within a day.
-function eventSortKey(e) { return e.date + "T" + (e.time || "99:99"); }
 
 // Whole-day difference between two YYYY-MM-DD strings (b - a), date-only.
 function daysBetween(aIso, bIso) {
@@ -130,12 +146,64 @@ function daysBetween(aIso, bIso) {
 }
 
 // All module tasks scheduled on a given date, as { module, task } pairs.
+// Includes recurring calendar events expanded onto `dateStr` is handled elsewhere;
+// this only covers module tasks.
 function tasksOnDate(dateStr) {
   const out = [];
   state.modules.forEach((m) => {
     m.tasks.forEach((t) => { if (t.date === dateStr) out.push({ module: m, task: t }); });
   });
   return out;
+}
+
+/* ---------- Recurrence ---------- */
+// Does a (possibly recurring) event fall on dateStr? Base date is the first
+// occurrence; weekly repeats on the same weekday, monthly on the same day-of-month.
+function eventOccursOn(e, dateStr) {
+  if (e.date === dateStr) return true;
+  if (!e.repeat || dateStr < e.date) return false;
+  const base = new Date(e.date + "T00:00:00");
+  const d = new Date(dateStr + "T00:00:00");
+  if (e.repeat === "daily") return true;
+  if (e.repeat === "weekly") return base.getDay() === d.getDay();
+  if (e.repeat === "monthly") return base.getDate() === d.getDate();
+  return false;
+}
+
+// All calendar events occurring on a date (expands recurring ones).
+function eventsOnDate(dateStr) {
+  return state.events.filter((e) => eventOccursOn(e, dateStr));
+}
+
+// Next occurrence date (YYYY-MM-DD) of an event on/after `fromIso`.
+function nextOccurrence(e, fromIso) {
+  if (!e.repeat) return e.date >= fromIso ? e.date : null;
+  if (e.date >= fromIso) return e.date;
+  // Walk forward up to ~2 years to find the next matching day.
+  let d = new Date(fromIso + "T00:00:00");
+  for (let i = 0; i < 740; i++) {
+    const iso = isoOf(d);
+    if (eventOccursOn(e, iso)) return iso;
+    d.setDate(d.getDate() + 1);
+  }
+  return null;
+}
+
+/* ---------- German grade helpers (scale 1.0–5.0; passed if ≤ 4.0) ---------- */
+function isPassingGrade(g) { return typeof g === "number" && g <= 4.0; }
+function gradeLabel(g) {
+  if (typeof g !== "number") return "—";
+  return `${g.toFixed(1).replace(".", ",")} (${isPassingGrade(g) ? "bestanden" : "nicht bestanden"})`;
+}
+
+/* ---------- German study-time formatting ---------- */
+// e.g. 3725s -> "1 Std. 2 Min." ; under a minute -> "0 Min."
+function formatDuration(sec) {
+  const totalMin = Math.round(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h} Std. ${m} Min.`;
+  return `${m} Min.`;
 }
 
 /* ---------- Tab navigation ---------- */
@@ -151,6 +219,37 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "pomodoro") renderStudyStats();
   });
 });
+
+/* ============================================================
+   THEME (hell / dunkel / automatisch)  — Punkt 9
+   ============================================================ */
+const THEME_KEY = "study-tracker-theme";
+function loadTheme() {
+  try { return localStorage.getItem(THEME_KEY) || "auto"; } catch (e) { return "auto"; }
+}
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === "auto") {
+    const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+  } else {
+    root.setAttribute("data-theme", mode);
+  }
+}
+function setTheme(mode) {
+  try { localStorage.setItem(THEME_KEY, mode); } catch (e) {}
+  applyTheme(mode);
+  // reflect active state on buttons if present
+  document.querySelectorAll("[data-theme-btn]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.themeBtn === mode);
+  });
+}
+// React to OS theme changes while in "auto".
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (loadTheme() === "auto") applyTheme("auto");
+  });
+}
 
 /* ============================================================
    DASHBOARD
@@ -170,7 +269,7 @@ function renderDashboard() {
 
   const gpa = computeGpa();
   document.getElementById("gpa-summary").textContent = gpa
-    ? `Notendurchschnitt: ${gpa.value.toFixed(2)} (aus ${gpa.count} benoteten Modul${gpa.count > 1 ? "en" : ""}${gpa.weighted ? ", ECTS-gewichtet" : ""}).`
+    ? `Notendurchschnitt: ${gpa.value.toFixed(2).replace(".", ",")} (Skala 1,0–5,0${gpa.weighted ? ", ECTS-gewichtet" : ""}; aus ${gpa.count} benoteten Modul${gpa.count > 1 ? "en" : ""}).`
     : "Noch keine Noten erfasst.";
 
   renderPinnedModules();
@@ -181,16 +280,21 @@ function renderDashboard() {
 function renderCountdown() {
   const card = document.getElementById("countdown-card");
   const today = todayIso();
-  const nextExam = state.events
-    .filter((e) => e.type === "exam" && e.date >= today)
-    .sort((a, b) => eventSortKey(a).localeCompare(eventSortKey(b)))[0];
+  // Consider recurring exams too: use each event's next occurrence from today.
+  let nextExam = null, nextExamDate = null;
+  state.events.filter((e) => e.type === "exam").forEach((e) => {
+    const occ = nextOccurrence(e, today);
+    if (occ && (!nextExamDate || occ < nextExamDate || (occ === nextExamDate && (e.time || "99:99") < (nextExam.time || "99:99")))) {
+      nextExam = e; nextExamDate = occ;
+    }
+  });
 
   if (!nextExam) {
     card.className = "countdown-card none";
     card.innerHTML = `<span>🎯 Keine anstehenden Prüfungen. Füge im Kalender eine hinzu.</span>`;
     return;
   }
-  const days = daysBetween(today, nextExam.date);
+  const days = daysBetween(today, nextExamDate);
   const label = days === 0 ? "Heute!" : days === 1 ? "1 Tag" : `${days} Tage`;
   const timePart = nextExam.time ? ` · ${formatTime(nextExam.time)} Uhr` : "";
   card.className = "countdown-card";
@@ -198,7 +302,7 @@ function renderCountdown() {
     <div><div class="cd-days">${label}</div><div class="muted">bis zur nächsten Prüfung</div></div>
     <div class="cd-info">
       <div class="cd-title">${escapeHtml(nextExam.title)}</div>
-      <div class="cd-date">${formatDate(nextExam.date)}${timePart}</div>
+      <div class="cd-date">${formatDate(nextExamDate)}${timePart}</div>
     </div>`;
 }
 
@@ -299,19 +403,22 @@ function renderUpcoming() {
   const list = document.getElementById("upcoming-events");
   list.innerHTML = "";
   const today = todayIso();
+  // Expand to each event's next occurrence (handles recurring events).
   const upcoming = state.events
-    .filter((e) => e.date >= today)
-    .sort((a, b) => eventSortKey(a).localeCompare(eventSortKey(b)))
+    .map((e) => ({ e, date: nextOccurrence(e, today) }))
+    .filter((x) => x.date)
+    .sort((a, b) => (a.date + (a.e.time || "99:99")).localeCompare(b.date + (b.e.time || "99:99")))
     .slice(0, 6);
   if (!upcoming.length) {
     list.innerHTML = `<p class="empty-state">Keine anstehenden Einträge.</p>`;
     return;
   }
-  upcoming.forEach((e) => {
+  upcoming.forEach(({ e, date }) => {
     const li = document.createElement("li");
-    const when = e.time ? `${formatDate(e.date)} · ${formatTime(e.time)} Uhr` : formatDate(e.date);
+    const when = e.time ? `${formatDate(date)} · ${formatTime(e.time)} Uhr` : formatDate(date);
+    const rep = e.repeat ? " ↻" : "";
     li.innerHTML = `
-      <span>${escapeHtml(e.title)} <span class="tag ${e.type}">${typeLabel(e.type)}</span></span>
+      <span>${escapeHtml(e.title)} <span class="tag ${e.type}">${typeLabel(e.type)}</span>${rep}</span>
       <span class="ev-date">${when}</span>`;
     list.appendChild(li);
   });
@@ -366,14 +473,14 @@ function renderCalendar() {
       + (dateStr === selectedDate ? " selected" : "");
     cell.innerHTML = `<span class="day-num">${day}</span>`;
 
-    // Calendar events on this day (timed first, ordered by time)
+    // Calendar events on this day (incl. recurring), timed first, ordered by time
     const dayItems = [];
-    state.events
-      .filter((e) => e.date === dateStr)
+    eventsOnDate(dateStr)
       .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"))
       .forEach((e) => {
         const prefix = e.time ? `${formatTime(e.time)} ` : "";
-        dayItems.push({ type: e.type, label: `${prefix}${e.title}` });
+        const rep = e.repeat ? " ↻" : "";
+        dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}` });
       });
     // Scheduled module tasks on this day
     tasksOnDate(dateStr).forEach(({ module, task }) => {
@@ -406,8 +513,7 @@ function renderCalendar() {
 function renderDayDetail() {
   const wrap = document.getElementById("day-detail");
   if (!selectedDate) { wrap.innerHTML = ""; return; }
-  const dayEvents = state.events
-    .filter((e) => e.date === selectedDate)
+  const dayEvents = eventsOnDate(selectedDate)
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99") || a.title.localeCompare(b.title));
 
   const dayTasks = tasksOnDate(selectedDate);
@@ -418,13 +524,16 @@ function renderDayDetail() {
     html += `<p class="muted">Nichts geplant. Füge unten einen Kalendereintrag hinzu oder plane eine Modulaufgabe für diesen Tag.</p>`;
   }
 
-  // Calendar events
+  // Calendar events (recurring shown with a repeat note)
+  const REPEAT_LABELS = { daily: "täglich", weekly: "wöchentlich", monthly: "monatlich" };
   dayEvents.forEach((e) => {
     const timePart = e.time ? `<span class="d-time">${formatTime(e.time)} Uhr</span> ` : "";
+    const repPart = e.repeat ? ` <span class="repeat-badge">↻ ${REPEAT_LABELS[e.repeat] || ""}</span>` : "";
+    const delTitle = e.repeat ? "Serie löschen" : "Löschen";
     html += `
       <div class="d-event">
-        <span class="d-left"><span class="tag ${e.type}">${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}</span>
-        <button class="del-btn" data-del-event="${e.id}" title="Löschen">✕</button>
+        <span class="d-left"><span class="tag ${e.type}">${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
+        <button class="del-btn" data-del-event="${e.id}" title="${delTitle}">✕</button>
       </div>`;
   });
 
@@ -462,9 +571,15 @@ function renderDayDetail() {
 
   wrap.querySelectorAll("[data-del-event]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      const ev = state.events.find((x) => x.id === btn.dataset.delEvent);
+      const idx = state.events.indexOf(ev);
       state.events = state.events.filter((x) => x.id !== btn.dataset.delEvent);
       saveState();
       renderCalendar();
+      if (ev) showSnackbar(`Eintrag „${ev.title}“ gelöscht.`, () => {
+        state.events.splice(Math.min(idx, state.events.length), 0, ev);
+        saveState(); renderCalendar();
+      });
     });
   });
 
@@ -548,8 +663,9 @@ document.getElementById("event-form").addEventListener("submit", (e) => {
   const time = document.getElementById("event-time").value || null;
   const title = document.getElementById("event-title").value.trim();
   const type = document.getElementById("event-type").value;
+  const repeat = document.getElementById("event-repeat").value || null;
   if (!date || !title) return;
-  state.events.push({ id: uid(), date, time, title, type });
+  state.events.push({ id: uid(), date, time, title, type, repeat });
   saveState();
   selectedDate = date;
   const d = new Date(date + "T00:00:00");
@@ -557,6 +673,7 @@ document.getElementById("event-form").addEventListener("submit", (e) => {
   calMonth = d.getMonth();
   document.getElementById("event-title").value = "";
   document.getElementById("event-time").value = "";
+  document.getElementById("event-repeat").value = "";
   renderCalendar();
 });
 
@@ -574,7 +691,22 @@ document.getElementById("module-form").addEventListener("submit", (e) => {
   renderModules();
 });
 
+let moduleFilter = ""; // Suchbegriff (Punkt 7)
+
+// Trifft ein Modul auf den Suchbegriff zu? Prüft Modulname, Aufgaben, Teilaufgaben.
+function moduleMatchesFilter(m, q) {
+  if (!q) return true;
+  const hay = [
+    m.name,
+    ...m.tasks.map((t) => t.text),
+    ...m.tasks.flatMap((t) => t.subtasks.map((s) => s.text)),
+  ].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+
 function renderModules() {
+  fillPomoModuleSelect(); // Modul-Auswahl beim Timer aktuell halten
+
   const wrap = document.getElementById("modules-list");
   wrap.innerHTML = "";
 
@@ -583,10 +715,18 @@ function renderModules() {
     return;
   }
 
+  const q = moduleFilter.trim().toLowerCase();
+  const visible = state.modules.filter((m) => moduleMatchesFilter(m, q));
+
+  if (!visible.length) {
+    wrap.innerHTML = `<p class="empty-state">Keine Module passen zu „${escapeHtml(moduleFilter)}“.</p>`;
+    return;
+  }
+
   // Drei Bereiche: In Bearbeitung (angeheftet), Demnächst (Rest), Abgeschlossen.
-  const ongoing = state.modules.filter((m) => m.pinned && !m.completed);
-  const upcoming = state.modules.filter((m) => !m.pinned && !m.completed);
-  const finished = state.modules.filter((m) => m.completed);
+  const ongoing = visible.filter((m) => m.pinned && !m.completed);
+  const upcoming = visible.filter((m) => !m.pinned && !m.completed);
+  const finished = visible.filter((m) => m.completed);
 
   const sections = [
     { title: "In Bearbeitung", hint: "Angeheftete Module, an denen du arbeitest", items: ongoing },
@@ -602,6 +742,24 @@ function renderModules() {
     wrap.appendChild(header);
     sec.items.forEach((m) => wrap.appendChild(renderModuleCard(m)));
   });
+}
+
+// Kleiner Hinweis unter den Modul-Noten: Status ggü. Wunschnote (Skala 1,0–5,0).
+function gradeHint(m) {
+  if (typeof m.grade !== "number") {
+    if (typeof m.targetGrade === "number")
+      return `<p class="grade-hint muted">Wunschnote: ${m.targetGrade.toFixed(1).replace(".", ",")} · noch keine Note erfasst.</p>`;
+    return "";
+  }
+  const passed = isPassingGrade(m.grade);
+  let cls = passed ? "ok" : "bad";
+  let text = `Note ${m.grade.toFixed(1).replace(".", ",")} — ${passed ? "bestanden" : "nicht bestanden"}`;
+  if (typeof m.targetGrade === "number") {
+    const met = m.grade <= m.targetGrade;
+    cls = met ? "ok" : "warn";
+    text += ` · Ziel ${m.targetGrade.toFixed(1).replace(".", ",")} ${met ? "erreicht ✓" : "verfehlt"}`;
+  }
+  return `<p class="grade-hint ${cls}">${text}</p>`;
 }
 
 function renderModuleCard(m) {
@@ -628,9 +786,11 @@ function renderModuleCard(m) {
     <div class="module-body">
       <div class="module-controls">
         <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Abgeschlossen</label>
-        <label>Note: <input type="number" class="grade-input" data-grade step="0.1" placeholder="—" value="${m.grade ?? ""}"/></label>
+        <label>Note: <input type="number" class="grade-input" data-grade step="0.1" min="1" max="5" placeholder="—" value="${m.grade ?? ""}"/></label>
+        <label>Wunschnote: <input type="number" class="grade-input" data-target step="0.1" min="1" max="5" placeholder="—" value="${m.targetGrade ?? ""}"/></label>
         <label>ECTS: <input type="number" class="grade-input" data-ects step="0.5" min="0" placeholder="0" value="${m.ects || ""}"/></label>
       </div>
+      ${gradeHint(m)}
       <ul class="checklist"></ul>
       <form class="add-task-form"><input type="text" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
     </div>`;
@@ -675,7 +835,12 @@ function renderModuleCard(m) {
         saveState(); renderModules();
       });
       sli.querySelector(".del-btn").addEventListener("click", () => {
+        const idx = t.subtasks.indexOf(s);
         t.subtasks = t.subtasks.filter((x) => x.id !== s.id); saveState(); renderModules();
+        showSnackbar(`Teilaufgabe „${s.text}“ gelöscht.`, () => {
+          t.subtasks.splice(Math.min(idx, t.subtasks.length), 0, s);
+          saveState(); renderModules();
+        });
       });
       subUl.appendChild(sli);
     });
@@ -702,7 +867,13 @@ function renderModuleCard(m) {
       renderModules();
     });
     li.querySelector("[data-del-task]").addEventListener("click", () => {
-      m.tasks = m.tasks.filter((x) => x.id !== t.id); saveState(); renderModules();
+      const idx = m.tasks.indexOf(t);
+      m.tasks = m.tasks.filter((x) => x.id !== t.id);
+      saveState(); renderModules();
+      showSnackbar(`Aufgabe „${t.text}“ gelöscht.`, () => {
+        m.tasks.splice(Math.min(idx, m.tasks.length), 0, t);
+        saveState(); renderModules();
+      });
     });
     ul.appendChild(li);
   });
@@ -723,7 +894,11 @@ function renderModuleCard(m) {
   });
   card.querySelector("[data-grade]").addEventListener("change", (ev) => {
     const v = parseFloat(ev.target.value);
-    m.grade = isNaN(v) ? null : v; saveState();
+    m.grade = isNaN(v) ? null : v; saveState(); renderModules();
+  });
+  card.querySelector("[data-target]").addEventListener("change", (ev) => {
+    const v = parseFloat(ev.target.value);
+    m.targetGrade = isNaN(v) ? null : v; saveState(); renderModules();
   });
   card.querySelector("[data-ects]").addEventListener("change", (ev) => {
     m.ects = parseFloat(ev.target.value) || 0; saveState(); renderModules();
@@ -732,10 +907,13 @@ function renderModuleCard(m) {
     m.pinned = !m.pinned; saveState(); renderModules();
   });
   card.querySelector("[data-del-module]").addEventListener("click", () => {
-    if (confirm(`Modul „${m.name}“ und alle zugehörigen Aufgaben löschen?`)) {
-      state.modules = state.modules.filter((x) => x.id !== m.id);
-      saveState(); renderModules();
-    }
+    const idx = state.modules.indexOf(m);
+    state.modules = state.modules.filter((x) => x.id !== m.id);
+    saveState(); renderModules(); renderDashboard();
+    showSnackbar(`Modul „${m.name}“ gelöscht.`, () => {
+      state.modules.splice(Math.min(idx, state.modules.length), 0, m);
+      saveState(); renderModules(); renderDashboard();
+    });
   });
 
   return card;
@@ -774,9 +952,12 @@ document.getElementById("import-file").addEventListener("change", (e) => {
       saveState();
       // Restore study stats and timer settings if present in the backup.
       if (parsed._stats && typeof parsed._stats === "object") {
+        const ps = parsed._stats;
         stats = {
-          sessions: Number(parsed._stats.sessions) || 0,
-          daily: (parsed._stats.daily && typeof parsed._stats.daily === "object") ? parsed._stats.daily : {},
+          sessions: Number(ps.sessions) || 0,
+          daily: (ps.daily && typeof ps.daily === "object") ? ps.daily : {},
+          perModule: (ps.perModule && typeof ps.perModule === "object") ? ps.perModule : {},
+          goals: (ps.goals && typeof ps.goals === "object") ? { ...DEFAULT_GOALS, ...ps.goals } : { ...DEFAULT_GOALS },
         };
         pomoSessions = stats.sessions;
         saveStats();
@@ -803,9 +984,9 @@ document.getElementById("import-file").addEventListener("change", (e) => {
 
 document.getElementById("reset-btn").addEventListener("click", () => {
   if (!confirm("ALLE Daten dauerhaft löschen? Das kann nicht rückgängig gemacht werden.")) return;
-  state = { modules: [], events: [] };
+  state = migrate({ modules: [], events: [] });
   saveState();
-  stats = { sessions: 0, daily: {} };
+  stats = { sessions: 0, daily: {}, perModule: {}, goals: { ...DEFAULT_GOALS } };
   pomoSessions = 0;
   saveStats();
   renderDashboard(); renderCalendar(); renderModules();
@@ -851,6 +1032,9 @@ function pomoSeconds(mode) { return pomoMinutes[mode] * 60; }
 
 /* ----- Persisted study stats: session count + per-day study seconds ----- */
 const STATS_KEY = "study-tracker-stats";
+// Default study-time goals in hours (used as the bar reference maxima).
+// Must be declared BEFORE loadStats() runs below (it references DEFAULT_GOALS).
+const DEFAULT_GOALS = { day: 8, week: 40, month: 160, year: 1000 };
 let stats = loadStats();
 function loadStats() {
   try {
@@ -859,18 +1043,22 @@ function loadStats() {
       const s = JSON.parse(raw);
       if (typeof s.sessions !== "number") s.sessions = 0;
       if (!s.daily || typeof s.daily !== "object") s.daily = {};
+      if (!s.perModule || typeof s.perModule !== "object") s.perModule = {};
+      if (!s.goals || typeof s.goals !== "object") s.goals = { ...DEFAULT_GOALS };
       return s;
     }
   } catch (e) {}
-  return { sessions: 0, daily: {} }; // daily: { "YYYY-MM-DD": secondsStudied }
+  // daily: { "YYYY-MM-DD": sec } · perModule: { moduleId: sec } · goals (hours)
+  return { sessions: 0, daily: {}, perModule: {}, goals: { ...DEFAULT_GOALS } };
 }
 function saveStats() { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }
 
-// Add studied seconds to today's tally.
+// Add studied seconds to today's tally (and to the selected module, if any).
 function addStudySeconds(sec) {
   if (sec <= 0) return;
   const d = todayIso();
   stats.daily[d] = (stats.daily[d] || 0) + sec;
+  if (pomoModuleId) stats.perModule[pomoModuleId] = (stats.perModule[pomoModuleId] || 0) + sec;
   saveStats();
 }
 
@@ -878,6 +1066,7 @@ let pomoMode = "focus";
 let pomoRemaining = pomoSeconds(pomoMode);
 let pomoTimerId = null;
 let pomoSessions = stats.sessions; // restored from storage
+let pomoModuleId = "";             // optional: Modul, dem die Fokuszeit zugeordnet wird
 let pomoEndTime = null;            // absolute ms timestamp the period ends
 let pomoLastTick = null;           // last wall-clock sample (for study accrual)
 let studyCarry = 0;                // sub-second focus time carried between ticks
@@ -988,13 +1177,6 @@ document.querySelectorAll("[data-pomo-mode]").forEach((b) => {
 });
 
 /* ----- Study-time stats: daily / weekly / monthly / yearly bars ----- */
-function formatHm(sec) {
-  const totalMin = Math.floor(sec / 60);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return `${h}h ${String(m).padStart(2, "0")}m`;
-}
-
 // Sum studied seconds whose date (YYYY-MM-DD) passes the predicate.
 function sumStudy(pred) {
   let total = 0;
@@ -1009,8 +1191,8 @@ function sumStudy(pred) {
 let statsRefDate = todayIso();
 
 function renderStudyToday() {
-  // "Studied today" always reflects the real current day (live counter target).
-  document.getElementById("study-today").textContent = formatHm(stats.daily[todayIso()] || 0);
+  // "Heute gelernt" reflects the real current day (live counter target).
+  document.getElementById("study-today").textContent = formatDuration(stats.daily[todayIso()] || 0);
 }
 
 // Kurzes Label für den Bezugstag, z. B. "Heute" oder "12.11.2026".
@@ -1043,13 +1225,13 @@ function renderStudyStats() {
   const monthSec = sumStudy((d) => d.startsWith(month));
   const yearSec = sumStudy((d) => d.startsWith(year));
 
-  // Each bar is filled relative to a sensible reference max (in seconds):
-  //   day ~ 8h, week ~ 40h, month ~ 160h, year ~ 1000h. Caps at 100%.
+  // Bar maxima come from the user's goals (hours). Caps at 100%.
+  const g = stats.goals || DEFAULT_GOALS;
   const rows = [
-    { label: "Tag", sub: refDayLabel(), sec: daySec, max: 8 * 3600, cls: "" },
-    { label: "Woche", sub: `${formatDate(weekStartIso)} – ${formatDate(weekEndIso)}`, sec: weekSec, max: 40 * 3600, cls: "week" },
-    { label: "Monat", sub: `${monthName} ${year}`, sec: monthSec, max: 160 * 3600, cls: "month" },
-    { label: "Jahr", sub: year, sec: yearSec, max: 1000 * 3600, cls: "year" },
+    { label: "Tag", sub: refDayLabel(), sec: daySec, max: (g.day || DEFAULT_GOALS.day) * 3600, cls: "" },
+    { label: "Woche", sub: `${formatDate(weekStartIso)} – ${formatDate(weekEndIso)}`, sec: weekSec, max: (g.week || DEFAULT_GOALS.week) * 3600, cls: "week" },
+    { label: "Monat", sub: `${monthName} ${year}`, sec: monthSec, max: (g.month || DEFAULT_GOALS.month) * 3600, cls: "month" },
+    { label: "Jahr", sub: year, sec: yearSec, max: (g.year || DEFAULT_GOALS.year) * 3600, cls: "year" },
   ];
 
   document.getElementById("stats-ref-label").textContent = refDayLabel();
@@ -1061,9 +1243,34 @@ function renderStudyStats() {
       <div class="stat-row">
         <div class="stat-label">
           <span>${r.label} <span class="stat-sub">${r.sub}</span></span>
-          <span class="stat-hours">${formatHm(r.sec)}</span>
+          <span class="stat-hours">${formatDuration(r.sec)}</span>
         </div>
         <div class="stat-bar"><div class="stat-fill ${r.cls}" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join("");
+
+  renderPerModuleStudy();
+}
+
+// Lernzeit je Modul (Punkt 6)
+function renderPerModuleStudy() {
+  const wrap = document.getElementById("study-per-module");
+  if (!wrap) return;
+  const entries = state.modules
+    .map((m) => ({ m, sec: stats.perModule[m.id] || 0 }))
+    .filter((x) => x.sec > 0)
+    .sort((a, b) => b.sec - a.sec);
+  if (!entries.length) {
+    wrap.innerHTML = `<p class="empty-state">Noch keine modulbezogene Lernzeit. Wähle unten beim Timer ein Modul.</p>`;
+    return;
+  }
+  const maxSec = entries[0].sec || 1;
+  wrap.innerHTML = entries.map(({ m, sec }) => {
+    const pct = Math.round((sec / maxSec) * 100);
+    return `
+      <div class="stat-row">
+        <div class="stat-label"><span>${escapeHtml(m.name)}</span><span class="stat-hours">${formatDuration(sec)}</span></div>
+        <div class="stat-bar"><div class="stat-fill month" style="width:${pct}%"></div></div>
       </div>`;
   }).join("");
 }
@@ -1084,6 +1291,110 @@ document.getElementById("stats-today").addEventListener("click", () => {
   statsRefDate = todayIso();
   renderStudyStats();
 });
+
+// Modul-Auswahl für den Timer füllen (Punkt 6)
+function fillPomoModuleSelect() {
+  const sel = document.getElementById("pomo-module");
+  if (!sel) return;
+  const prev = pomoModuleId;
+  sel.innerHTML = `<option value="">Ohne Modulzuordnung</option>` +
+    state.modules.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+  // keep selection if the module still exists
+  sel.value = state.modules.some((m) => m.id === prev) ? prev : "";
+  pomoModuleId = sel.value;
+}
+const pomoModuleSel = document.getElementById("pomo-module");
+if (pomoModuleSel) {
+  pomoModuleSel.addEventListener("change", (e) => { pomoModuleId = e.target.value; });
+}
+
+// Lernzeit-Ziele (Punkt 10)
+function fillGoalInputs() {
+  const g = stats.goals || DEFAULT_GOALS;
+  const map = { "goal-day": g.day, "goal-week": g.week, "goal-month": g.month, "goal-year": g.year };
+  Object.entries(map).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+}
+const goalsForm = document.getElementById("goals-form");
+if (goalsForm) {
+  goalsForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const num = (id, fb) => { const v = parseFloat(document.getElementById(id).value); return (!v || v <= 0) ? fb : v; };
+    stats.goals = {
+      day: num("goal-day", DEFAULT_GOALS.day),
+      week: num("goal-week", DEFAULT_GOALS.week),
+      month: num("goal-month", DEFAULT_GOALS.month),
+      year: num("goal-year", DEFAULT_GOALS.year),
+    };
+    saveStats();
+    fillGoalInputs();
+    renderStudyStats();
+    const el = document.getElementById("goals-status");
+    if (el) el.textContent = "Ziele gespeichert.";
+  });
+}
+
+// Modul-Suche (Punkt 7)
+const moduleSearch = document.getElementById("module-search");
+if (moduleSearch) {
+  moduleSearch.addEventListener("input", (e) => { moduleFilter = e.target.value; renderModules(); });
+}
+
+// Theme-Umschalter (Punkt 9)
+document.querySelectorAll("[data-theme-btn]").forEach((b) => {
+  b.addEventListener("click", () => setTheme(b.dataset.themeBtn));
+});
+
+/* ============================================================
+   ERINNERUNGEN / BENACHRICHTIGUNGEN (Punkt 8)
+   Browser-Benachrichtigungen für heute anstehende Prüfungen/Abgaben.
+   ============================================================ */
+const NOTIFY_KEY = "study-tracker-notified"; // merkt, was heute schon gemeldet wurde
+function notifiedToday() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(NOTIFY_KEY) || "{}");
+    return raw.date === todayIso() ? (raw.ids || []) : [];
+  } catch (e) { return []; }
+}
+function markNotified(ids) {
+  localStorage.setItem(NOTIFY_KEY, JSON.stringify({ date: todayIso(), ids }));
+}
+function updateNotifyButton() {
+  const btn = document.getElementById("notify-btn");
+  if (!btn) return;
+  if (!("Notification" in window)) {
+    btn.textContent = "Von diesem Browser nicht unterstützt";
+    btn.disabled = true;
+    return;
+  }
+  const p = Notification.permission;
+  btn.textContent = p === "granted" ? "✓ Erinnerungen aktiv"
+    : p === "denied" ? "Im Browser blockiert" : "Erinnerungen aktivieren";
+  btn.disabled = (p === "denied");
+}
+function checkReminders() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const today = todayIso();
+  const already = notifiedToday();
+  const due = [];
+  state.events.forEach((e) => {
+    if ((e.type === "exam" || e.type === "deadline") && eventOccursOn(e, today) && !already.includes(e.id)) {
+      due.push(e);
+    }
+  });
+  if (!due.length) return;
+  due.forEach((e) => {
+    const when = e.time ? ` um ${formatTime(e.time)} Uhr` : "";
+    try { new Notification(`Heute: ${typeLabel(e.type)}`, { body: `${e.title}${when}`, tag: e.id }); } catch (err) {}
+  });
+  markNotified(already.concat(due.map((e) => e.id)));
+}
+const notifyBtn = document.getElementById("notify-btn");
+if (notifyBtn) {
+  notifyBtn.addEventListener("click", () => {
+    if (!("Notification" in window)) return;
+    Notification.requestPermission().then(() => { updateNotifyButton(); checkReminders(); });
+  });
+}
 
 // Custom-duration settings form
 function pomoFillSettings() {
@@ -1107,6 +1418,32 @@ document.getElementById("pomo-settings").addEventListener("submit", (e) => {
   el.textContent = `Gespeichert — Fokus ${pomoMinutes.focus} Min., kurze Pause ${pomoMinutes.short} Min., lange Pause ${pomoMinutes.long} Min.`;
 });
 
+/* ============================================================
+   SNACKBAR mit „Rückgängig“ (Punkt 3)
+   ============================================================ */
+let snackTimer = null;
+// Zeigt eine Meldung; optional mit Rückgängig-Aktion und automatischer Ausführung
+// der „commit“-Aktion, falls nicht rückgängig gemacht.
+function showSnackbar(message, undoFn) {
+  const bar = document.getElementById("snackbar");
+  if (!bar) { if (undoFn) {/* nichts zu tun */} return; }
+  clearTimeout(snackTimer);
+  bar.innerHTML = `<span>${escapeHtml(message)}</span>`;
+  if (undoFn) {
+    const btn = document.createElement("button");
+    btn.className = "snack-undo";
+    btn.textContent = "Rückgängig";
+    btn.addEventListener("click", () => {
+      clearTimeout(snackTimer);
+      bar.classList.remove("show");
+      undoFn();
+    });
+    bar.appendChild(btn);
+  }
+  bar.classList.add("show");
+  snackTimer = setTimeout(() => bar.classList.remove("show"), 6000);
+}
+
 /* ---------- Utilities ---------- */
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -1115,8 +1452,16 @@ function escapeHtml(str) {
 }
 
 /* ---------- Boot ---------- */
+setTheme(loadTheme());       // Theme anwenden (Punkt 9)
 initCalendarState();
+fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
+fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
 renderDashboard();
+renderModules();             // damit Suche/Picker initial stimmen
 pomoFillSettings();
 pomoRender();
 renderStudyStats();
+updateNotifyButton();        // Status des Erinnerungs-Buttons (Punkt 8)
+checkReminders();            // heute fällige Prüfungen/Abgaben melden
+
+})(); // Ende IIFE

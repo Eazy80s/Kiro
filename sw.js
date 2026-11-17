@@ -1,5 +1,5 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v10";
+const CACHE = "study-tracker-v11";
 const ASSETS = [
   "index.html",
   "styles.css",

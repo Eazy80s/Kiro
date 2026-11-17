@@ -2242,22 +2242,43 @@ async function initSync() {
 
 // Login per Magic Link
 const syncLoginForm = document.getElementById("sync-login-form");
+let loginCooldownUntil = 0; // verhindert zu häufiges Anfordern (Rate-Limit vorbeugen)
 if (syncLoginForm) {
   syncLoginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!syncConfigured()) { renderSyncUI(); return; }
     const email = document.getElementById("sync-email").value.trim();
     if (!email) return;
+
+    // Lokale Sperre: höchstens alle 60 s einen Link anfordern.
+    const now = Date.now();
+    if (now < loginCooldownUntil) {
+      const secs = Math.ceil((loginCooldownUntil - now) / 1000);
+      setSyncStatus(`Bitte kurz warten (${secs} s), bevor du erneut einen Link anforderst.`);
+      return;
+    }
+
+    const btn = syncLoginForm.querySelector("button[type=submit]");
     try {
+      if (btn) btn.disabled = true;
       setSyncStatus("Sende Anmeldelink …");
       const { error } = await sb.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: window.location.href.split("#")[0] },
       });
       if (error) throw error;
-      setSyncStatus("Anmeldelink gesendet. Prüfe deine E-Mails (auch Spam) und öffne den Link auf diesem Gerät.");
+      loginCooldownUntil = Date.now() + 60000;
+      setSyncStatus("Anmeldelink gesendet. Prüfe deine E-Mails (auch Spam) und öffne den Link auf diesem Gerät. Der Link kann 1–2 Minuten brauchen.");
     } catch (e2) {
-      setSyncStatus("Konnte Link nicht senden: " + (e2.message || e2));
+      const msg = (e2 && (e2.message || e2.error_description)) || String(e2);
+      if (/rate limit|rate_limit|too many/i.test(msg)) {
+        loginCooldownUntil = Date.now() + 120000;
+        setSyncStatus("E-Mail-Limit erreicht: Supabase hat in kurzer Zeit zu viele Anmelde-Mails verschickt. Warte ca. 1 Stunde und fordere dann erneut einen Link an — oder nutze in Supabase einen eigenen E-Mail-Dienst (SMTP). Falls bereits eine Mail kam, öffne einfach deren Link.");
+      } else {
+        setSyncStatus("Konnte Link nicht senden: " + msg);
+      }
+    } finally {
+      if (btn) setTimeout(() => { btn.disabled = false; }, 2000);
     }
   });
 }
@@ -2323,9 +2344,12 @@ if (errClearBtn) {
    PWA-UPDATE-HINWEIS (Punkt 5)
    Von der SW-Registrierung in index.html aufgerufen.
    ============================================================ */
+let updateBannerDismissed = false; // in dieser Sitzung weggeklickt → nicht erneut zeigen
 window.showUpdateBanner = function (reg) {
   const bar = document.getElementById("update-banner");
   if (!bar) return;
+  if (updateBannerDismissed) return;      // vom Nutzer geschlossen: ruhig bleiben
+  if (!bar.hidden) return;                // schon sichtbar: nicht erneut verdrahten
   bar.hidden = false;
   const reload = document.getElementById("update-reload");
   const dismiss = document.getElementById("update-dismiss");
@@ -2333,7 +2357,7 @@ window.showUpdateBanner = function (reg) {
     if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
     else window.location.reload();
   };
-  if (dismiss) dismiss.onclick = () => { bar.hidden = true; };
+  if (dismiss) dismiss.onclick = () => { updateBannerDismissed = true; bar.hidden = true; };
 };
 
 /* ============================================================

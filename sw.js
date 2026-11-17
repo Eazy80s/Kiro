@@ -1,9 +1,10 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v5";
+const CACHE = "study-tracker-v6";
 const ASSETS = [
   "index.html",
   "styles.css",
   "app.js",
+  "supabase-config.js",
   "manifest.webmanifest",
   "icon.svg",
   "icon-180.png",

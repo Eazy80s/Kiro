@@ -240,6 +240,27 @@
       <p class="muted">Erhalte eine Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Funktioniert, solange die App in einem Tab geöffnet ist.</p>
       <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
 
+      <h2>Synchronisierung (Geräte-Sync)</h2>
+      <p class="muted">Melde dich an, damit deine Daten automatisch zwischen Mac und iPhone synchronisiert werden. Ohne Anmeldung läuft die App wie bisher nur lokal.</p>
+      <div id="sync-area">
+        <!-- abgemeldet -->
+        <div id="sync-logged-out">
+          <form id="sync-login-form" class="inline-form">
+            <input type="email" id="sync-email" placeholder="deine@email.de" required />
+            <button type="submit" class="primary-btn">Anmeldelink senden</button>
+          </form>
+        </div>
+        <!-- angemeldet -->
+        <div id="sync-logged-in" hidden>
+          <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
+          <div class="data-actions">
+            <button id="sync-now-btn" class="secondary-btn">Jetzt synchronisieren</button>
+            <button id="sync-logout-btn" class="danger-btn">Abmelden</button>
+          </div>
+        </div>
+        <p id="sync-status" class="muted" aria-live="polite"></p>
+      </div>
+
       <h2>Notenskala</h2>
       <p class="muted">Diese App verwendet die deutsche Skala 1,0–5,0 (bestanden bis einschließlich 4,0). Pro Modul kannst du eine Wunschnote hinterlegen.</p>
     </section>
@@ -249,6 +270,9 @@
   <!-- Snackbar für „Rückgängig“ -->
   <div id="snackbar" class="snackbar" aria-live="polite"></div>
 
+  <!-- Supabase-Client (für Geräte-Sync). Lädt aus dem Netz; ohne Netz läuft die App lokal weiter. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="supabase-config.js"></script>
   <script src="app.js"></script>
   <script>
     // Service Worker registrieren, damit die App installiert offline funktioniert.

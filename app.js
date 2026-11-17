@@ -69,7 +69,16 @@ function migrate(data) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Zeitstempel für "zuletzt gespeichert gewinnt" beim Geräte-Sync.
+  state.updatedAt = Date.now();
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // z. B. Speicher voll (QuotaExceededError) — Nutzer informieren statt still scheitern.
+    if (typeof showSnackbar === "function") showSnackbar("Speichern fehlgeschlagen (Browserspeicher voll?).");
+    console.warn("saveState fehlgeschlagen:", e);
+  }
+  if (typeof scheduleSyncUpload === "function") scheduleSyncUpload();
 }
 
 function uid() {
@@ -1451,6 +1460,214 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Alles neu zeichnen (nach einem Sync, der den gesamten Zustand ersetzt).
+function renderAll() {
+  renderDashboard();
+  renderCalendar();
+  renderModules();
+  renderStudyStats();
+  pomoRender();
+}
+
+/* ============================================================
+   GERÄTE-SYNC über Supabase (Punkt 1)
+   - optional: ohne Login läuft alles rein lokal weiter
+   - ein Dokument pro Nutzer (Tabelle app_state), JSON = kompletter Zustand
+   - Konfliktstrategie: "zuletzt gespeichert gewinnt" via updatedAt
+   ============================================================ */
+let sb = null;            // Supabase-Client (oder null, wenn nicht konfiguriert)
+let syncUser = null;      // angemeldeter Nutzer (oder null)
+let syncUploadTimer = null;
+let syncApplying = false;  // true, während Remote-Daten eingespielt werden (kein Re-Upload)
+
+function syncConfigured() {
+  const c = window.SUPABASE_CONFIG;
+  return !!(c && c.url && c.anonKey &&
+    c.url.indexOf("DEINE_") !== 0 && c.anonKey.indexOf("DEIN_") !== 0 &&
+    window.supabase && typeof window.supabase.createClient === "function");
+}
+
+function setSyncStatus(msg) {
+  const el = document.getElementById("sync-status");
+  if (el) el.textContent = msg || "";
+}
+
+function renderSyncUI() {
+  const out = document.getElementById("sync-logged-out");
+  const inn = document.getElementById("sync-logged-in");
+  if (!out || !inn) return;
+  if (!syncConfigured()) {
+    out.hidden = true; inn.hidden = true;
+    setSyncStatus("Sync nicht eingerichtet. Trage deine Supabase-Daten in supabase-config.js ein (Anleitung im README).");
+    return;
+  }
+  if (syncUser) {
+    out.hidden = true; inn.hidden = false;
+    const em = document.getElementById("sync-user-email");
+    if (em) em.textContent = syncUser.email || "";
+  } else {
+    out.hidden = false; inn.hidden = true;
+  }
+}
+
+// Zustand als reines Datenpaket (ohne Laufzeit-Krempel) für den Upload.
+function syncPayload() {
+  return { ...state, _stats: stats, _pomodoro: pomoMinutes, updatedAt: state.updatedAt || Date.now() };
+}
+
+// Remote-Daten in die App übernehmen (ersetzt den lokalen Zustand komplett).
+function applyRemote(doc) {
+  if (!doc || typeof doc !== "object") return;
+  syncApplying = true;
+  try {
+    state = migrate(doc);
+    saveStateLocalOnly();
+    if (doc._stats && typeof doc._stats === "object") {
+      const ps = doc._stats;
+      stats = {
+        sessions: Number(ps.sessions) || 0,
+        daily: (ps.daily && typeof ps.daily === "object") ? ps.daily : {},
+        perModule: (ps.perModule && typeof ps.perModule === "object") ? ps.perModule : {},
+        goals: (ps.goals && typeof ps.goals === "object") ? { ...DEFAULT_GOALS, ...ps.goals } : { ...DEFAULT_GOALS },
+      };
+      pomoSessions = stats.sessions;
+      saveStats();
+    }
+    if (doc._pomodoro && typeof doc._pomodoro === "object") {
+      pomoMinutes = {
+        focus: clampMin(doc._pomodoro.focus, POMO_DEFAULTS.focus),
+        short: clampMin(doc._pomodoro.short, POMO_DEFAULTS.short),
+        long: clampMin(doc._pomodoro.long, POMO_DEFAULTS.long),
+      };
+      savePomoMinutes();
+      pomoFillSettings();
+    }
+    fillGoalInputs();
+    renderAll();
+  } finally {
+    syncApplying = false;
+  }
+}
+
+// Nur lokal speichern, ohne erneuten Sync-Upload auszulösen.
+function saveStateLocalOnly() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+// Debounced Upload nach jeder Änderung.
+function scheduleSyncUpload() {
+  if (!sb || !syncUser || syncApplying) return;
+  clearTimeout(syncUploadTimer);
+  syncUploadTimer = setTimeout(uploadState, 1200);
+}
+
+async function uploadState() {
+  if (!sb || !syncUser) return;
+  try {
+    setSyncStatus("Synchronisiere …");
+    const { error } = await sb.from("app_state").upsert({
+      user_id: syncUser.id,
+      data: syncPayload(),
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    setSyncStatus("Zuletzt synchronisiert: " + new Date().toLocaleTimeString("de-DE"));
+  } catch (e) {
+    setSyncStatus("Sync-Fehler: " + (e.message || e));
+  }
+}
+
+// Remote laden und bei Bedarf einspielen (neuere Daten gewinnen), sonst hochladen.
+async function pullAndMerge() {
+  if (!sb || !syncUser) return;
+  try {
+    setSyncStatus("Lade Daten …");
+    const { data, error } = await sb.from("app_state").select("data, updated_at").eq("user_id", syncUser.id).maybeSingle();
+    if (error) throw error;
+    const localTs = state.updatedAt || 0;
+    if (data && data.data) {
+      const remote = data.data;
+      const remoteTs = remote.updatedAt || new Date(data.updated_at).getTime() || 0;
+      if (remoteTs > localTs) {
+        applyRemote(remote);
+        setSyncStatus("Aktualisiert vom Server (neuere Daten übernommen).");
+      } else {
+        await uploadState();
+      }
+    } else {
+      // Noch nichts auf dem Server → lokalen Stand hochladen.
+      await uploadState();
+    }
+  } catch (e) {
+    setSyncStatus("Sync-Fehler: " + (e.message || e));
+  }
+}
+
+async function initSync() {
+  renderSyncUI();
+  if (!syncConfigured()) return;
+  try {
+    sb = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+  } catch (e) {
+    setSyncStatus("Sync-Client konnte nicht gestartet werden: " + (e.message || e));
+    return;
+  }
+
+  // Bestehende Sitzung (z. B. nach Magic-Link-Rückkehr) prüfen.
+  try {
+    const { data } = await sb.auth.getSession();
+    syncUser = data && data.session ? data.session.user : null;
+  } catch (e) {}
+  renderSyncUI();
+  if (syncUser) { pullAndMerge(); }
+
+  // Auf Login/Logout reagieren (auch nach Klick auf den E-Mail-Link).
+  sb.auth.onAuthStateChange((_event, session) => {
+    syncUser = session ? session.user : null;
+    renderSyncUI();
+    if (syncUser) pullAndMerge();
+  });
+
+  // Beim Zurückkehren in den Tab erneut abgleichen (einfacher "Realtime"-Ersatz).
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && syncUser) pullAndMerge();
+  });
+}
+
+// Login per Magic Link
+const syncLoginForm = document.getElementById("sync-login-form");
+if (syncLoginForm) {
+  syncLoginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!syncConfigured()) { renderSyncUI(); return; }
+    const email = document.getElementById("sync-email").value.trim();
+    if (!email) return;
+    try {
+      setSyncStatus("Sende Anmeldelink …");
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href.split("#")[0] },
+      });
+      if (error) throw error;
+      setSyncStatus("Anmeldelink gesendet. Prüfe deine E-Mails (auch Spam) und öffne den Link auf diesem Gerät.");
+    } catch (e2) {
+      setSyncStatus("Konnte Link nicht senden: " + (e2.message || e2));
+    }
+  });
+}
+const syncNowBtn = document.getElementById("sync-now-btn");
+if (syncNowBtn) syncNowBtn.addEventListener("click", () => pullAndMerge());
+const syncLogoutBtn = document.getElementById("sync-logout-btn");
+if (syncLogoutBtn) {
+  syncLogoutBtn.addEventListener("click", async () => {
+    if (!sb) return;
+    await sb.auth.signOut();
+    syncUser = null;
+    renderSyncUI();
+    setSyncStatus("Abgemeldet. Die App läuft weiterhin lokal.");
+  });
+}
+
 /* ---------- Boot ---------- */
 setTheme(loadTheme());       // Theme anwenden (Punkt 9)
 initCalendarState();
@@ -1463,5 +1680,6 @@ pomoRender();
 renderStudyStats();
 updateNotifyButton();        // Status des Erinnerungs-Buttons (Punkt 8)
 checkReminders();            // heute fällige Prüfungen/Abgaben melden
+initSync();                  // Geräte-Sync initialisieren (Punkt 1)
 
 })(); // Ende IIFE

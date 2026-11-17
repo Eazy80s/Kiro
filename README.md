@@ -31,12 +31,38 @@ Zum Installieren als App braucht es eine **HTTPS-Adresse** (lokale Dateien reich
 - **Netlify Drop (kostenlos, ohne Konto):** Gehe auf <https://app.netlify.com/drop> und ziehe den **Projektordner** (mit `index.html`, `styles.css`, `app.js`, `manifest.webmanifest`, `sw.js`, den Icons) in das Fenster. Du erhältst sofort eine HTTPS-URL. Diese in Safari öffnen → **Teilen → Zum Home-Bildschirm**.
 - **GitHub Pages:** nur möglich, wenn das Repo **öffentlich** ist (oder mit bezahltem Plan für private Repos). Dann: Repo → Settings → Pages → Branch `main`, Ordner `/`.
 
-## Daten
+## Geräte-Sync mit Supabase (optional)
 
-Alles liegt im **localStorage** des jeweiligen Browsers:
+Standardmäßig liegen die Daten nur lokal im Browser. Mit einem kostenlosen
+Supabase-Projekt synchronisiert die App automatisch zwischen Mac und iPhone.
+**Ohne Anmeldung** läuft alles wie bisher rein lokal weiter.
+
+**Einmalige Einrichtung (~10 Min):**
+
+1. Konto auf <https://supabase.com> anlegen → **New project** erstellen.
+2. **SQL Editor** öffnen → Inhalt von [`supabase-setup.sql`](supabase-setup.sql) einfügen → **Run**.
+   (Legt die Tabelle `app_state` an und schützt sie per Row-Level-Security.)
+3. **Project Settings → API** öffnen und zwei Werte kopieren:
+   - **Project URL**
+   - **anon public** Key
+4. Diese beiden Werte in [`supabase-config.js`](supabase-config.js) eintragen
+   (die Platzhalter `DEINE_…` ersetzen) und die Änderung pushen/neu deployen.
+   *(Der anon-Key ist für den Browser gedacht und darf öffentlich stehen — der
+   Schutz kommt über Login + Row-Level-Security.)*
+
+**Benutzung:** In der App **Einstellungen → Synchronisierung** → E-Mail eingeben →
+Anmeldelink anfordern → Link **auf demselben Gerät** öffnen. Danach synct die App
+automatisch; auf einem zweiten Gerät meldest du dich mit derselben E-Mail an.
+
+- Konfliktstrategie: **zuletzt gespeichert gewinnt** (das zuletzt aktive Gerät setzt den Stand).
+- Abgleich erfolgt beim Anmelden, beim Zurückkehren in den Tab und nach jeder Änderung.
+
+## Daten (lokal)
+
+Ohne Sync liegt alles im **localStorage** des jeweiligen Browsers:
 
 - Tab schließen und später öffnen → Daten sind noch da.
-- Gebunden an *diesen Browser auf diesem Gerät*. Für Übertragung: **Export/Import** nutzen (z. B. über iCloud Drive).
+- Gebunden an *diesen Browser auf diesem Gerät*. Für Übertragung ohne Sync: **Export/Import** nutzen.
 
 ## Tests
 
@@ -54,6 +80,8 @@ npm test      # oder: node tests/logic.test.js
 | `styles.css` | Styling (hell/dunkel über CSS-Variablen) |
 | `app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
 | `manifest.webmanifest`, `sw.js`, `icon*` | PWA (installierbar/offline) |
+| `supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
+| `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
 | `tests/logic.test.js` | Automatisierte Tests |
 
 ## Lizenz

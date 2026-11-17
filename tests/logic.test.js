@@ -61,12 +61,39 @@ function formatDuration(sec) {
 function eventOccursOn(e, dateStr) {
   if (e.date === dateStr) return true;
   if (!e.repeat || dateStr < e.date) return false;
+  if (e.repeatUntil && dateStr > e.repeatUntil) return false;
   const base = new Date(e.date + "T00:00:00"), d = new Date(dateStr + "T00:00:00");
   if (e.repeat === "daily") return true;
   if (e.repeat === "weekly") return base.getDay() === d.getDay();
+  if (e.repeat === "biweekly") {
+    if (base.getDay() !== d.getDay()) return false;
+    const weeks = Math.round((d - base) / (7 * 86400000));
+    return weeks % 2 === 0;
+  }
   if (e.repeat === "monthly") return base.getDate() === d.getDate();
   return false;
 }
+function daysBetween(aIso, bIso) {
+  return Math.round((new Date(bIso + "T00:00:00") - new Date(aIso + "T00:00:00")) / 86400000);
+}
+function dueStatus(dateStr, todayStr) {
+  const diff = daysBetween(todayStr, dateStr);
+  if (diff < 0) return "overdue";
+  if (diff === 0) return "due-today";
+  if (diff <= 3) return "due-soon";
+  return "due-later";
+}
+// Prognose (ECTS-gewichtet)
+function gradeForecast(modules, targetAvg) {
+  const graded = modules.filter((m) => typeof m.grade === "number" && (m.ects || 0) > 0);
+  const remaining = modules.filter((m) => typeof m.grade !== "number" && (m.ects || 0) > 0);
+  const remainingEcts = remaining.reduce((a, m) => a + m.ects, 0);
+  if (remainingEcts === 0) return { done: true };
+  const totalEcts = graded.reduce((a, m) => a + m.ects, 0) + remainingEcts;
+  const gradedSum = graded.reduce((a, m) => a + m.grade * m.ects, 0);
+  return { needed: (targetAvg * totalEcts - gradedSum) / remainingEcts, remainingEcts };
+}
+function icsEscape(s) { return String(s).replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n"); }
 function nextOccurrence(e, fromIso) {
   if (!e.repeat) return e.date >= fromIso ? e.date : null;
   if (e.date >= fromIso) return e.date;
@@ -104,6 +131,24 @@ eq(eventOccursOn({ date: "2026-11-10", repeat: "daily" }, "2026-11-30"), true, "
 eq(eventOccursOn({ date: "2026-11-09", repeat: "weekly" }, "2026-11-02"), false, "Vor Startdatum: nein");
 eq(nextOccurrence({ date: "2026-11-09", repeat: "weekly" }, "2026-11-12"), "2026-11-16", "nextOccurrence wöchentlich");
 eq(nextOccurrence({ date: "2026-01-01", repeat: null }, "2026-11-12"), null, "nextOccurrence einmalig vergangen = null");
+
+// Erweiterte Wiederholungen (Punkt 8)
+eq(eventOccursOn({ date: "2026-11-09", repeat: "biweekly" }, "2026-11-23"), true, "Alle-2-Wochen: +14 Tage");
+eq(eventOccursOn({ date: "2026-11-09", repeat: "biweekly" }, "2026-11-16"), false, "Alle-2-Wochen: +7 Tage nein");
+eq(eventOccursOn({ date: "2026-11-09", repeat: "weekly", repeatUntil: "2026-11-20" }, "2026-11-23"), false, "Serie endet (nach repeatUntil)");
+eq(eventOccursOn({ date: "2026-11-09", repeat: "weekly", repeatUntil: "2026-11-30" }, "2026-11-16"), true, "Serie läuft noch (vor repeatUntil)");
+
+// Fälligkeits-Status (Punkt 5)
+eq([dueStatus("2026-11-10","2026-11-12"), dueStatus("2026-11-12","2026-11-12"), dueStatus("2026-11-14","2026-11-12"), dueStatus("2026-11-20","2026-11-12")],
+   ["overdue","due-today","due-soon","due-later"], "Fälligkeits-Status");
+
+// Notenschnitt-Prognose (Punkt 7): benötigte Note in Restmodulen
+// benotet: 2.0@6 ; offen: 6 ECTS ; Ziel 2.0 → needed = (2.0*12 - 12)/6 = 2.0
+eq(Number(gradeForecast([{grade:2.0,ects:6},{grade:null,ects:6}], 2.0).needed.toFixed(2)), 2.0, "Prognose: benötigte Note = 2,0");
+eq(gradeForecast([{grade:2.0,ects:6}], 2.0).done, true, "Prognose: nichts offen → done");
+
+// ICS-Escaping (Punkt 3)
+eq(icsEscape("A, B; C"), "A\\, B\\; C", "ICS-Escaping von Komma/Semikolon");
 
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);

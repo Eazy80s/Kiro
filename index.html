@@ -36,7 +36,6 @@
         <button class="tab-btn" data-tab="calendar">Kalender</button>
         <button class="tab-btn" data-tab="modules">Module</button>
         <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
-        <button class="tab-btn" data-tab="data">Daten</button>
         <button class="tab-btn" data-tab="settings">Einstellungen</button>
       </nav>
     </aside>
@@ -63,6 +62,8 @@
       <h2>Aktuell in Bearbeitung</h2>
       <div id="pinned-modules" class="module-progress-list"></div>
 
+      <div id="overdue-list" hidden></div>
+
       <h2>Fokus heute</h2>
       <ul id="pinned-tasks" class="focus-list"></ul>
 
@@ -74,13 +75,13 @@
     <section id="calendar" class="tab-panel">
       <div class="calendar-controls">
         <div class="nav-group">
-          <button id="prev-month" class="icon-btn" title="Vorheriger Monat">«</button>
-          <button id="prev-day" class="icon-btn" title="Vorheriger Tag">‹</button>
+          <button id="prev-month" class="icon-btn" title="Vorheriger Monat" aria-label="Vorheriger Monat">«</button>
+          <button id="prev-day" class="icon-btn" title="Vorheriger Tag" aria-label="Vorheriger Tag">‹</button>
         </div>
         <h2 id="calendar-title"></h2>
         <div class="nav-group">
-          <button id="next-day" class="icon-btn" title="Nächster Tag">›</button>
-          <button id="next-month" class="icon-btn" title="Nächster Monat">»</button>
+          <button id="next-day" class="icon-btn" title="Nächster Tag" aria-label="Nächster Tag">›</button>
+          <button id="next-month" class="icon-btn" title="Nächster Monat" aria-label="Nächster Monat">»</button>
         </div>
       </div>
       <div class="calendar-sub">
@@ -113,8 +114,10 @@
             <option value="">Keine Wiederholung</option>
             <option value="daily">Täglich</option>
             <option value="weekly">Wöchentlich</option>
+            <option value="biweekly">Alle 2 Wochen</option>
             <option value="monthly">Monatlich</option>
           </select>
+          <input type="date" id="event-repeat-until" title="Serie endet am (optional)" />
           <button type="submit" class="primary-btn">Hinzufügen</button>
         </form>
       </div>
@@ -125,9 +128,13 @@
       <form id="module-form" class="inline-form">
         <input type="text" id="module-name" placeholder="Neuer Modulname (z. B. Lineare Algebra)" required />
         <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
+        <input type="text" id="module-semester" placeholder="Semester (z. B. WS 2026/27)" class="semester-input" />
         <button type="submit" class="primary-btn">Modul hinzufügen</button>
       </form>
-      <input type="search" id="module-search" class="module-search" placeholder="🔍 Module & Aufgaben durchsuchen …" />
+      <div class="module-filters">
+        <input type="search" id="module-search" class="module-search" placeholder="🔍 Module & Aufgaben durchsuchen …" />
+        <select id="semester-filter" class="semester-filter"><option value="">Alle Semester</option></select>
+      </div>
       <div id="modules-list" class="modules-list"></div>
     </section>
 
@@ -168,6 +175,11 @@
         <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen. Die Balken-Ziele kannst du in den Einstellungen anpassen.</p>
       </div>
 
+      <h2>Verlauf (letzte 14 Tage)</h2>
+      <div class="pomodoro-card">
+        <div id="study-chart" class="study-chart"></div>
+      </div>
+
       <h2>Lernzeit je Modul</h2>
       <div class="pomodoro-card">
         <div id="study-per-module" class="study-stats"></div>
@@ -188,23 +200,6 @@
         <button type="submit" class="primary-btn">Zeiten speichern</button>
       </form>
       <p id="pomo-status" class="muted"></p>
-    </section>
-
-    <!-- DATEN -->
-    <section id="data" class="tab-panel">
-      <h2>Sicherung &amp; Wiederherstellung</h2>
-      <p class="muted">Deine Daten liegen nur in diesem Browser. Exportiere sie als Sicherung oder um sie auf ein anderes Gerät zu übertragen.</p>
-      <div class="data-actions">
-        <button id="export-btn" class="primary-btn">⬇ Daten exportieren (.json)</button>
-        <label class="primary-btn file-label">
-          ⬆ Daten importieren
-          <input type="file" id="import-file" accept="application/json,.json" hidden />
-        </label>
-      </div>
-      <p id="data-status" class="muted"></p>
-      <h2>Zurücksetzen</h2>
-      <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
-      <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
     </section>
 
     <!-- EINSTELLUNGEN -->
@@ -261,8 +256,38 @@
         <p id="sync-status" class="muted" aria-live="polite"></p>
       </div>
 
+      <h2>Notenschnitt-Prognose</h2>
+      <p class="muted">Welchen Durchschnitt brauchst du in den noch unbenoteten Modulen, um ein Gesamtziel zu erreichen? (ECTS-gewichtet, Skala 1,0–5,0.)</p>
+      <form id="forecast-form" class="inline-form">
+        <label class="forecast-label">Gesamtziel:
+          <input type="number" id="forecast-target" class="grade-input" min="1" max="5" step="0.1" value="2,5" placeholder="2,5" />
+        </label>
+        <button type="submit" class="secondary-btn">Berechnen</button>
+      </form>
+      <p id="forecast-result" class="muted"></p>
+
       <h2>Notenskala</h2>
       <p class="muted">Diese App verwendet die deutsche Skala 1,0–5,0 (bestanden bis einschließlich 4,0). Pro Modul kannst du eine Wunschnote hinterlegen.</p>
+
+      <h2>Kalender-Export</h2>
+      <p class="muted">Exportiere Prüfungen, Abgaben und geplante Aufgaben als <code>.ics</code>-Datei für Apple/Google Kalender.</p>
+      <button id="ics-btn" class="primary-btn">📅 Kalender exportieren (.ics)</button>
+
+      <h2>Sicherung &amp; Wiederherstellung</h2>
+      <p class="muted">Exportiere deine Daten als Sicherung oder um sie auf ein anderes Gerät zu übertragen.</p>
+      <p id="backup-reminder" class="backup-reminder" hidden></p>
+      <div class="data-actions">
+        <button id="export-btn" class="primary-btn">⬇ Daten exportieren (.json)</button>
+        <label class="primary-btn file-label">
+          ⬆ Daten importieren
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p id="data-status" class="muted"></p>
+
+      <h2>Zurücksetzen</h2>
+      <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
+      <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
     </section>
     </main>
   </div>

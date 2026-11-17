@@ -67,11 +67,8 @@
       <h2>Fokus heute</h2>
       <ul id="pinned-tasks" class="focus-list"></ul>
 
-      <h2>Diese Woche</h2>
+      <h2>Anstehend</h2>
       <ul id="week-agenda" class="agenda-list"></ul>
-
-      <h2>Demnächst</h2>
-      <ul id="upcoming-events" class="upcoming-list"></ul>
     </section>
 
     <!-- KALENDER -->
@@ -336,21 +333,24 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").then((reg) => {
-          // Prüft, ob bereits ein neuer SW wartet.
-          function check(worker) {
-            if (!worker) return;
-            if (worker.state === "installed" && navigator.serviceWorker.controller) {
-              window.showUpdateBanner && window.showUpdateBanner(reg);
-            }
-            worker.addEventListener("statechange", () => {
-              if (worker.state === "installed" && navigator.serviceWorker.controller) {
-                window.showUpdateBanner && window.showUpdateBanner(reg);
-              }
-            });
+          // Einen wartenden SW nach seiner Version fragen und ggf. den Hinweis zeigen.
+          function maybePrompt(worker) {
+            if (!worker || !navigator.serviceWorker.controller) return;
+            const ch = new MessageChannel();
+            ch.port1.onmessage = (ev) => {
+              window.showUpdateBanner && window.showUpdateBanner(reg, ev.data);
+            };
+            try { worker.postMessage("GET_VERSION", [ch.port2]); }
+            catch (e) { window.showUpdateBanner && window.showUpdateBanner(reg, null); }
           }
-          if (reg.waiting) window.showUpdateBanner && window.showUpdateBanner(reg);
-          reg.addEventListener("updatefound", () => check(reg.installing));
-          // regelmäßig auf Updates prüfen
+          if (reg.waiting) maybePrompt(reg.waiting);
+          reg.addEventListener("updatefound", () => {
+            const w = reg.installing;
+            if (!w) return;
+            w.addEventListener("statechange", () => {
+              if (w.state === "installed" && navigator.serviceWorker.controller) maybePrompt(w);
+            });
+          });
           setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
         }).catch(() => {});
 

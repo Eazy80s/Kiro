@@ -426,8 +426,7 @@ function renderDashboard() {
   renderPinnedModules();
   renderOverdue();
   renderPinnedTasks();
-  renderWeekAgenda();
-  renderUpcoming();
+  renderAgenda();
 }
 
 function renderCountdown() {
@@ -577,31 +576,6 @@ function renderPinnedTasks() {
 
       list.appendChild(li);
     });
-  });
-}
-
-function renderUpcoming() {
-  const list = document.getElementById("upcoming-events");
-  list.innerHTML = "";
-  const today = todayIso();
-  // Expand to each event's next occurrence (handles recurring events).
-  const upcoming = state.events
-    .map((e) => ({ e, date: nextOccurrence(e, today) }))
-    .filter((x) => x.date)
-    .sort((a, b) => (a.date + (a.e.time || "99:99")).localeCompare(b.date + (b.e.time || "99:99")))
-    .slice(0, 6);
-  if (!upcoming.length) {
-    list.innerHTML = `<p class="empty-state">Keine anstehenden Einträge.</p>`;
-    return;
-  }
-  upcoming.forEach(({ e, date }) => {
-    const li = document.createElement("li");
-    const when = e.time ? `${formatDate(date)} · ${formatTime(e.time)} Uhr` : formatDate(date);
-    const rep = e.repeat ? " ↻" : "";
-    li.innerHTML = `
-      <span>${escapeHtml(e.title)} <span class="tag ${e.type}">${typeLabel(e.type)}</span>${rep}</span>
-      <span class="ev-date">${when}</span>`;
-    list.appendChild(li);
   });
 }
 
@@ -2518,20 +2492,30 @@ if (errClearBtn) {
    PWA-UPDATE-HINWEIS (Punkt 5)
    Von der SW-Registrierung in index.html aufgerufen.
    ============================================================ */
-let updateBannerDismissed = false; // in dieser Sitzung weggeklickt → nicht erneut zeigen
-window.showUpdateBanner = function (reg) {
+// Zeigt den Update-Hinweis — aber nur, wenn genau DIESE Version nicht schon
+// weggeklickt wurde. Das Wegklicken wird je Version in localStorage gemerkt,
+// damit der Hinweis nach dem Schließen auch über Neuladen hinweg weg bleibt.
+const UPDATE_DISMISS_KEY = "study-tracker-update-dismissed";
+window.showUpdateBanner = function (reg, version) {
   const bar = document.getElementById("update-banner");
   if (!bar) return;
-  if (updateBannerDismissed) return;      // vom Nutzer geschlossen: ruhig bleiben
-  if (!bar.hidden) return;                // schon sichtbar: nicht erneut verdrahten
+  let dismissedVersion = null;
+  try { dismissedVersion = localStorage.getItem(UPDATE_DISMISS_KEY); } catch (e) {}
+  // Wurde genau diese Version bereits weggeklickt → nicht erneut zeigen.
+  if (version && dismissedVersion === version) return;
+  if (!bar.hidden) return; // schon sichtbar
   bar.hidden = false;
   const reload = document.getElementById("update-reload");
   const dismiss = document.getElementById("update-dismiss");
   if (reload) reload.onclick = () => {
+    try { localStorage.removeItem(UPDATE_DISMISS_KEY); } catch (e) {}
     if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
     else window.location.reload();
   };
-  if (dismiss) dismiss.onclick = () => { updateBannerDismissed = true; bar.hidden = true; };
+  if (dismiss) dismiss.onclick = () => {
+    try { if (version) localStorage.setItem(UPDATE_DISMISS_KEY, version); } catch (e) {}
+    bar.hidden = true;
+  };
 };
 
 /* ============================================================
@@ -2558,38 +2542,68 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ============================================================
-   WOCHENLISTE (Punkt 7) — kompakte Agenda „diese Woche“
+   ANSTEHEND — zusammengeführte Agenda (ersetzt „Diese Woche“ + „Demnächst“)
+   Teil 1: die nächsten 7 Tage im Detail (Events + geplante Aufgaben).
+   Teil 2: eine kompakte Vorschau auf spätere Termine, damit nichts
+           Fernes (z. B. eine Prüfung in 3 Wochen) verloren geht.
    ============================================================ */
-function renderWeekAgenda() {
+function renderAgenda() {
   const wrap = document.getElementById("week-agenda");
   if (!wrap) return;
   const today = todayIso();
-  const end = new Date(today + "T00:00:00"); end.setDate(end.getDate() + 6);
-  const endIso = isoOf(end);
+  const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  const fmtWhen = (iso, time) => {
+    const dt = new Date(iso + "T00:00:00");
+    return `${WD[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}.` + (time ? ` ${time}` : "");
+  };
+  const row = (iso, time, kind, text, cls) =>
+    `<li class="agenda-item${cls || ""}">
+      <span class="agenda-when">${fmtWhen(iso, time)}</span>
+      <span class="agenda-tag tag ${kind}">${typeLabel(kind)}</span>
+      <span class="agenda-text">${escapeHtml(text)}</span>
+    </li>`;
 
-  // Tage von heute bis +6 sammeln, jeweils Events (inkl. Wiederholung) + geplante Aufgaben.
-  const items = [];
+  // Teil 1: nächste 7 Tage
+  const week = [];
+  const horizon = new Date(today + "T00:00:00"); horizon.setDate(horizon.getDate() + 6);
+  const horizonIso = isoOf(horizon);
   let d = new Date(today + "T00:00:00");
   for (let i = 0; i < 7; i++) {
     const iso = isoOf(d);
-    eventsOnDate(iso).forEach((e) => items.push({ iso, time: e.time, kind: e.type, text: e.title }));
-    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) items.push({ iso, time: null, kind: "task", text: `${task.text} · ${module.name}` }); });
+    eventsOnDate(iso).forEach((e) => week.push({ iso, time: e.time, kind: e.type, text: e.title }));
+    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) week.push({ iso, time: null, kind: "task", text: `${task.text} · ${module.name}` }); });
     d.setDate(d.getDate() + 1);
   }
-  if (!items.length) { wrap.innerHTML = `<p class="empty-state">Diese Woche ist nichts geplant. 🌤️</p>`; return; }
+  week.sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99")));
 
-  items.sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99")));
-  const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-  wrap.innerHTML = items.map((it) => {
-    const dt = new Date(it.iso + "T00:00:00");
-    const when = `${WD[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}.` + (it.time ? ` ${it.time}` : "");
-    const todayCls = it.iso === today ? " agenda-today" : "";
-    return `<li class="agenda-item${todayCls}">
-      <span class="agenda-when">${when}</span>
-      <span class="agenda-tag tag ${it.kind}">${typeLabel(it.kind)}</span>
-      <span class="agenda-text">${escapeHtml(it.text)}</span>
-    </li>`;
-  }).join("");
+  // Teil 2: spätere Termine (> 7 Tage). Tag nach dem Wochen-Horizont als Startpunkt.
+  const afterHorizon = new Date(horizon); afterHorizon.setDate(afterHorizon.getDate() + 1);
+  const afterHorizonIso = isoOf(afterHorizon);
+  const later = [];
+  state.events.forEach((e) => {
+    const date = nextOccurrence(e, afterHorizonIso);
+    if (date && date > horizonIso) later.push({ e, date });
+  });
+  state.modules.forEach((m) => m.tasks.forEach((t) => {
+    if (t.date && !t.done && t.date > horizonIso) later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, time: null }, date: t.date });
+  }));
+  later.sort((a, b) => (a.date + (a.e.time || "99:99")).localeCompare(b.date + (b.e.time || "99:99")));
+  const laterTop = later.slice(0, 5);
+
+  let html = "";
+  if (!week.length && !laterTop.length) {
+    wrap.innerHTML = `<p class="empty-state">Nichts geplant. 🌤️</p>`;
+    return;
+  }
+  if (week.length) {
+    html += `<li class="agenda-section">Diese Woche</li>`;
+    html += week.map((it) => row(it.iso, it.time, it.kind, it.text, it.iso === today ? " agenda-today" : "")).join("");
+  }
+  if (laterTop.length) {
+    html += `<li class="agenda-section">Später</li>`;
+    html += laterTop.map(({ e, date }) => row(date, e.time, e.type, e.title)).join("");
+  }
+  wrap.innerHTML = html;
 }
 
 /* ---------- Boot ---------- */

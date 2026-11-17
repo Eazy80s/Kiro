@@ -314,13 +314,6 @@
   <!-- Druck-/PDF-Ansicht (nur beim Drucken sichtbar) -->
   <div id="print-view" class="print-view" aria-hidden="true"></div>
 
-  <!-- Update-Hinweis (neue Version verfügbar) -->
-  <div id="update-banner" class="update-banner" hidden>
-    <span>🔄 Neue Version verfügbar.</span>
-    <button id="update-reload" class="update-reload">Jetzt aktualisieren</button>
-    <button id="update-dismiss" class="update-dismiss" aria-label="Hinweis schließen">✕</button>
-  </div>
-
   <!-- Snackbar für „Rückgängig“ -->
   <div id="snackbar" class="snackbar" aria-live="polite"></div>
 
@@ -329,32 +322,15 @@
   <script src="supabase-config.js"></script>
   <script src="app.js"></script>
   <script>
-    // Service Worker registrieren + Update-Erkennung (Update-Hinweis in der App).
+    // Service Worker registrieren. Updates werden automatisch & unsichtbar
+    // übernommen (kein Hinweis-Banner): neuer SW aktiviert sich sofort, danach
+    // lädt die Seite einmalig neu, um die neue Version zu zeigen.
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").then((reg) => {
-          // Einen wartenden SW nach seiner Version fragen und ggf. den Hinweis zeigen.
-          function maybePrompt(worker) {
-            if (!worker || !navigator.serviceWorker.controller) return;
-            const ch = new MessageChannel();
-            ch.port1.onmessage = (ev) => {
-              window.showUpdateBanner && window.showUpdateBanner(reg, ev.data);
-            };
-            try { worker.postMessage("GET_VERSION", [ch.port2]); }
-            catch (e) { window.showUpdateBanner && window.showUpdateBanner(reg, null); }
-          }
-          if (reg.waiting) maybePrompt(reg.waiting);
-          reg.addEventListener("updatefound", () => {
-            const w = reg.installing;
-            if (!w) return;
-            w.addEventListener("statechange", () => {
-              if (w.state === "installed" && navigator.serviceWorker.controller) maybePrompt(w);
-            });
-          });
           setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
         }).catch(() => {});
 
-        // Nach Übernahme des neuen SW einmalig neu laden.
         let reloaded = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
           if (reloaded) return; reloaded = true; window.location.reload();

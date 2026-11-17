@@ -657,17 +657,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .del-btn .ic, .pin-btn .ic, .collapse-btn .ic { width: 1.05rem; height: 1.05rem; }
 .link-btn .ic { width: 0.95em; height: 0.95em; }
 
-/* Update-Banner (Punkt 5) */
-.update-banner {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-  background: var(--accent); color: #fff; padding: 12px 16px; border-radius: 12px;
-  display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-lg);
-  z-index: 1100; font-size: 0.9rem; max-width: calc(100vw - 32px);
-}
-.update-reload { background: #fff; color: var(--accent); border: none; border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
-.update-dismiss { background: transparent; border: none; color: rgba(255,255,255,0.85); cursor: pointer; font-size: 1rem; padding: 2px 6px; }
-.update-dismiss:hover { color: #fff; }
-
 /* Wochen-Agenda (Punkt 7) */
 .agenda-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .agenda-item {

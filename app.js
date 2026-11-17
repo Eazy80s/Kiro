@@ -2492,32 +2492,6 @@ if (errClearBtn) {
    PWA-UPDATE-HINWEIS (Punkt 5)
    Von der SW-Registrierung in index.html aufgerufen.
    ============================================================ */
-// Zeigt den Update-Hinweis — aber nur, wenn genau DIESE Version nicht schon
-// weggeklickt wurde. Das Wegklicken wird je Version in localStorage gemerkt,
-// damit der Hinweis nach dem Schließen auch über Neuladen hinweg weg bleibt.
-const UPDATE_DISMISS_KEY = "study-tracker-update-dismissed";
-window.showUpdateBanner = function (reg, version) {
-  const bar = document.getElementById("update-banner");
-  if (!bar) return;
-  let dismissedVersion = null;
-  try { dismissedVersion = localStorage.getItem(UPDATE_DISMISS_KEY); } catch (e) {}
-  // Wurde genau diese Version bereits weggeklickt → nicht erneut zeigen.
-  if (version && dismissedVersion === version) return;
-  if (!bar.hidden) return; // schon sichtbar
-  bar.hidden = false;
-  const reload = document.getElementById("update-reload");
-  const dismiss = document.getElementById("update-dismiss");
-  if (reload) reload.onclick = () => {
-    try { localStorage.removeItem(UPDATE_DISMISS_KEY); } catch (e) {}
-    if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
-    else window.location.reload();
-  };
-  if (dismiss) dismiss.onclick = () => {
-    try { if (version) localStorage.setItem(UPDATE_DISMISS_KEY, version); } catch (e) {}
-    bar.hidden = true;
-  };
-};
-
 /* ============================================================
    TASTENKÜRZEL (Punkt 6) — nur am Desktop sinnvoll
    N = neues Modul · / = Suche · 1–5 = Tabs wechseln

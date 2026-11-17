@@ -488,11 +488,12 @@ function renderPinnedModules() {
 // Überfällige, offene Aufgaben (Punkt 5)
 function renderOverdue() {
   const wrap = document.getElementById("overdue-list");
+  const block = document.getElementById("overdue-block");
   if (!wrap) return;
   const today = todayIso();
   const overdue = tasksByDue().filter((x) => x.task.date < today);
-  if (!overdue.length) { wrap.innerHTML = ""; wrap.hidden = true; return; }
-  wrap.hidden = false;
+  if (!overdue.length) { wrap.innerHTML = ""; if (block) block.hidden = true; return; }
+  if (block) block.hidden = false;
   wrap.innerHTML = `<h2 class="overdue-head">⚠️ Überfällig</h2>` +
     `<ul class="focus-list">` + overdue.map(({ module, task, status }) => {
       const cbId = `ov-${task.id}`;

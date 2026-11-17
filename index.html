@@ -43,32 +43,44 @@
     <main>
     <!-- ÜBERSICHT -->
     <section id="dashboard" class="tab-panel active">
-      <!-- Prüfungs-Countdown -->
-      <div id="countdown-card" class="countdown-card"></div>
+      <!-- Prüfungs-Countdown (volle Breite) -->
+      <div id="countdown-card" class="countdown-card dash-full"></div>
 
-      <h2>Gesamtfortschritt</h2>
-      <div class="progress-card">
-        <div class="progress-label">
-          <span>Gesamter Studienfortschritt <span id="overall-mode" class="muted-inline"></span></span>
-          <span id="overall-percent">0%</span>
-        </div>
-        <div class="progress-bar big">
-          <div id="overall-bar" class="progress-fill" style="width:0%"></div>
-        </div>
-        <p id="overall-summary" class="muted"></p>
-        <p id="gpa-summary" class="muted"></p>
+      <div class="dash-grid">
+        <section class="dash-block">
+          <h2>Gesamtfortschritt</h2>
+          <div class="progress-card">
+            <div class="progress-label">
+              <span>Gesamter Studienfortschritt <span id="overall-mode" class="muted-inline"></span></span>
+              <span id="overall-percent">0%</span>
+            </div>
+            <div class="progress-bar big">
+              <div id="overall-bar" class="progress-fill" style="width:0%"></div>
+            </div>
+            <p id="overall-summary" class="muted"></p>
+            <p id="gpa-summary" class="muted"></p>
+          </div>
+        </section>
+
+        <section class="dash-block">
+          <h2>Aktuell in Bearbeitung</h2>
+          <div id="pinned-modules" class="module-progress-list"></div>
+        </section>
+
+        <section class="dash-block" id="overdue-block" hidden>
+          <div id="overdue-list"></div>
+        </section>
+
+        <section class="dash-block">
+          <h2>Fokus heute</h2>
+          <ul id="pinned-tasks" class="focus-list"></ul>
+        </section>
+
+        <section class="dash-block">
+          <h2>Anstehend</h2>
+          <ul id="week-agenda" class="agenda-list"></ul>
+        </section>
       </div>
-
-      <h2>Aktuell in Bearbeitung</h2>
-      <div id="pinned-modules" class="module-progress-list"></div>
-
-      <div id="overdue-list" hidden></div>
-
-      <h2>Fokus heute</h2>
-      <ul id="pinned-tasks" class="focus-list"></ul>
-
-      <h2>Anstehend</h2>
-      <ul id="week-agenda" class="agenda-list"></ul>
     </section>
 
     <!-- KALENDER -->
@@ -180,133 +192,140 @@
         <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen. Die Balken-Ziele kannst du in den Einstellungen anpassen.</p>
       </div>
 
-      <h2>Verlauf (letzte 14 Tage)</h2>
-      <div class="pomodoro-card">
-        <div id="study-chart" class="study-chart"></div>
-      </div>
-
-      <h2>Lernzeit je Modul</h2>
-      <div class="pomodoro-card">
-        <div id="study-per-module" class="study-stats"></div>
-      </div>
-
-      <h2>Eigene Zeiten</h2>
-      <p class="muted">Lege eigene Längen in Minuten fest. Änderungen gelten sofort und werden gespeichert.</p>
-      <form id="pomo-settings" class="pomo-settings">
-        <label>Fokus
-          <input type="number" id="dur-focus" min="1" max="180" step="1" />
-        </label>
-        <label>Kurze Pause
-          <input type="number" id="dur-short" min="1" max="60" step="1" />
-        </label>
-        <label>Lange Pause
-          <input type="number" id="dur-long" min="1" max="120" step="1" />
-        </label>
-        <button type="submit" class="primary-btn">Zeiten speichern</button>
-      </form>
-      <p id="pomo-status" class="muted"></p>
-    </section>
-
-    <!-- EINSTELLUNGEN -->
-    <section id="settings" class="tab-panel">
-      <h2>Darstellung</h2>
-      <p class="muted">Wähle das Erscheinungsbild der App.</p>
-      <div class="theme-switch">
-        <button data-theme-btn="light" class="ghost-btn">☀️ Hell</button>
-        <button data-theme-btn="dark" class="ghost-btn">🌙 Dunkel</button>
-        <button data-theme-btn="auto" class="ghost-btn">🖥️ Automatisch</button>
-      </div>
-
-      <h2>Lernzeit-Ziele</h2>
-      <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
-      <form id="goals-form" class="pomo-settings">
-        <label>Tag
-          <input type="number" id="goal-day" min="1" max="24" step="0.5" />
-        </label>
-        <label>Woche
-          <input type="number" id="goal-week" min="1" max="168" step="1" />
-        </label>
-        <label>Monat
-          <input type="number" id="goal-month" min="1" max="744" step="1" />
-        </label>
-        <label>Jahr
-          <input type="number" id="goal-year" min="1" max="8760" step="1" />
-        </label>
-        <button type="submit" class="primary-btn">Ziele speichern</button>
-      </form>
-      <p id="goals-status" class="muted"></p>
-
-      <h2>Erinnerungen</h2>
-      <p class="muted">Erhalte eine Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Funktioniert, solange die App in einem Tab geöffnet ist.</p>
-      <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
-
-      <h2>Synchronisierung (Geräte-Sync)</h2>
-      <p class="muted">Melde dich an, damit deine Daten automatisch zwischen Mac und iPhone synchronisiert werden. Ohne Anmeldung läuft die App wie bisher nur lokal.</p>
-      <div id="sync-area">
-        <!-- abgemeldet -->
-        <div id="sync-logged-out">
-          <form id="sync-login-form" class="inline-form">
-            <input type="email" id="sync-email" placeholder="deine@email.de" required />
-            <button type="submit" class="primary-btn">Anmeldelink senden</button>
-          </form>
-        </div>
-        <!-- angemeldet -->
-        <div id="sync-logged-in" hidden>
-          <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
-          <div class="data-actions">
-            <button id="sync-now-btn" class="secondary-btn">Jetzt synchronisieren</button>
-            <button id="sync-restore-btn" class="secondary-btn">Lokale Sicherung wiederherstellen</button>
-            <button id="sync-logout-btn" class="danger-btn">Abmelden</button>
+      <div class="pomo-two-col">
+        <div class="pomo-col">
+          <h2>Verlauf (14 Tage)</h2>
+          <div class="pomodoro-card">
+            <div id="study-chart" class="study-chart"></div>
           </div>
         </div>
-        <span id="conn-badge" class="conn-badge"></span>
-        <p id="sync-status" class="muted" aria-live="polite"></p>
+        <div class="pomo-col">
+          <h2>Lernzeit je Modul</h2>
+          <div class="pomodoro-card">
+            <div id="study-per-module" class="study-stats"></div>
+          </div>
+        </div>
       </div>
 
-      <h2>Notenschnitt-Prognose</h2>
-      <p class="muted">Welchen Durchschnitt brauchst du in den noch unbenoteten Modulen, um ein Gesamtziel zu erreichen? (ECTS-gewichtet, Skala 1,0–5,0.)</p>
-      <form id="forecast-form" class="inline-form">
-        <label class="forecast-label">Gesamtziel:
-          <input type="number" id="forecast-target" class="grade-input" min="1" max="5" step="0.1" value="2,5" placeholder="2,5" />
-        </label>
-        <button type="submit" class="secondary-btn">Berechnen</button>
-      </form>
-      <p id="forecast-result" class="muted"></p>
+      <details class="pomo-settings-details">
+        <summary>Eigene Timer-Zeiten anpassen</summary>
+        <p class="muted">Lege eigene Längen in Minuten fest. Änderungen gelten sofort und werden gespeichert.</p>
+        <form id="pomo-settings" class="pomo-settings">
+          <label>Fokus
+            <input type="number" id="dur-focus" min="1" max="180" step="1" />
+          </label>
+          <label>Kurze Pause
+            <input type="number" id="dur-short" min="1" max="60" step="1" />
+          </label>
+          <label>Lange Pause
+            <input type="number" id="dur-long" min="1" max="120" step="1" />
+          </label>
+          <button type="submit" class="primary-btn">Zeiten speichern</button>
+        </form>
+        <p id="pomo-status" class="muted"></p>
+      </details>
+    </section>
 
-      <h2>Notenskala</h2>
-      <p class="muted">Diese App verwendet die deutsche Skala 1,0–5,0 (bestanden bis einschließlich 4,0). Pro Modul kannst du eine Wunschnote hinterlegen.</p>
+    <!-- EINSTELLUNGEN (als Akkordeon) -->
+    <section id="settings" class="tab-panel">
+      <details class="settings-group" open>
+        <summary>Darstellung</summary>
+        <p class="muted">Wähle das Erscheinungsbild der App.</p>
+        <div class="theme-switch">
+          <button data-theme-btn="light" class="ghost-btn">☀️ Hell</button>
+          <button data-theme-btn="dark" class="ghost-btn">🌙 Dunkel</button>
+          <button data-theme-btn="auto" class="ghost-btn">🖥️ Automatisch</button>
+        </div>
+      </details>
 
-      <h2>Kalender-Export</h2>
-      <p class="muted">Exportiere Prüfungen, Abgaben und geplante Aufgaben als <code>.ics</code>-Datei für Apple/Google Kalender.</p>
-      <button id="ics-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Kalender exportieren (.ics)</button>
+      <details class="settings-group">
+        <summary>Synchronisierung (Geräte-Sync)</summary>
+        <p class="muted">Melde dich an, damit deine Daten automatisch zwischen Mac und iPhone synchronisiert werden. Ohne Anmeldung läuft die App wie bisher nur lokal.</p>
+        <div id="sync-area">
+          <div id="sync-logged-out">
+            <form id="sync-login-form" class="inline-form">
+              <input type="email" id="sync-email" placeholder="deine@email.de" required />
+              <button type="submit" class="primary-btn">Anmeldelink senden</button>
+            </form>
+          </div>
+          <div id="sync-logged-in" hidden>
+            <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
+            <div class="data-actions">
+              <button id="sync-now-btn" class="secondary-btn">Jetzt synchronisieren</button>
+              <button id="sync-restore-btn" class="secondary-btn">Lokale Sicherung wiederherstellen</button>
+              <button id="sync-logout-btn" class="danger-btn">Abmelden</button>
+            </div>
+          </div>
+          <span id="conn-badge" class="conn-badge"></span>
+          <p id="sync-status" class="muted" aria-live="polite"></p>
+        </div>
+      </details>
 
-      <h2>Semesterübersicht drucken / als PDF</h2>
-      <p class="muted">Erzeugt eine druckbare Übersicht aller Module mit ECTS und Noten. Im Druckdialog kannst du „Als PDF sichern“ wählen.</p>
-      <button id="print-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Übersicht drucken</button>
+      <details class="settings-group">
+        <summary>Lernzeit-Ziele</summary>
+        <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
+        <form id="goals-form" class="pomo-settings">
+          <label>Tag <input type="number" id="goal-day" min="1" max="24" step="0.5" /></label>
+          <label>Woche <input type="number" id="goal-week" min="1" max="168" step="1" /></label>
+          <label>Monat <input type="number" id="goal-month" min="1" max="744" step="1" /></label>
+          <label>Jahr <input type="number" id="goal-year" min="1" max="8760" step="1" /></label>
+          <button type="submit" class="primary-btn">Ziele speichern</button>
+        </form>
+        <p id="goals-status" class="muted"></p>
+      </details>
 
-      <h2>Sicherung &amp; Wiederherstellung</h2>
-      <p class="muted">Exportiere deine Daten als Sicherung oder um sie auf ein anderes Gerät zu übertragen.</p>
-      <p id="backup-reminder" class="backup-reminder" hidden></p>
-      <div class="data-actions">
-        <button id="export-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Daten exportieren (.json)</button>
-        <label class="primary-btn file-label">
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg> Daten importieren
-          <input type="file" id="import-file" accept="application/json,.json" hidden />
-        </label>
-      </div>
-      <p id="data-status" class="muted"></p>
+      <details class="settings-group">
+        <summary>Noten</summary>
+        <p class="muted">Welchen Durchschnitt brauchst du in den noch unbenoteten Modulen, um ein Gesamtziel zu erreichen? (ECTS-gewichtet, Skala 1,0–5,0.)</p>
+        <form id="forecast-form" class="inline-form">
+          <label class="forecast-label">Gesamtziel:
+            <input type="number" id="forecast-target" class="grade-input" min="1" max="5" step="0.1" value="2,5" placeholder="2,5" />
+          </label>
+          <button type="submit" class="secondary-btn">Berechnen</button>
+        </form>
+        <p id="forecast-result" class="muted"></p>
+        <p class="muted">Skala 1,0–5,0 (bestanden bis einschließlich 4,0). Pro Modul kannst du eine Wunschnote und Teilnoten hinterlegen.</p>
+      </details>
 
-      <h2>Fehlerprotokoll</h2>
-      <p class="muted">Falls einmal etwas nicht funktioniert, werden die letzten Fehler hier lokal festgehalten.</p>
-      <div class="data-actions">
-        <button id="err-show-btn" class="secondary-btn">Protokoll anzeigen</button>
-        <button id="err-clear-btn" class="secondary-btn">Protokoll leeren</button>
-      </div>
-      <pre id="err-log" class="err-log" hidden></pre>
+      <details class="settings-group">
+        <summary>Erinnerungen</summary>
+        <p class="muted">Erhalte eine Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Funktioniert, solange die App in einem Tab geöffnet ist.</p>
+        <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
+      </details>
 
-      <h2>Zurücksetzen</h2>
-      <p class="muted">Löscht dauerhaft alles, was in diesem Browser gespeichert ist.</p>
-      <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
+      <details class="settings-group">
+        <summary>Export &amp; Druck</summary>
+        <p class="muted">Kalender als <code>.ics</code> für Apple/Google Kalender, oder eine druckbare Semesterübersicht (im Druckdialog „Als PDF sichern“).</p>
+        <div class="data-actions">
+          <button id="ics-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Kalender (.ics)</button>
+          <button id="print-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Übersicht drucken</button>
+        </div>
+      </details>
+
+      <details class="settings-group">
+        <summary>Sicherung &amp; Daten</summary>
+        <p class="muted">Exportiere deine Daten als Sicherung oder übertrage sie auf ein anderes Gerät.</p>
+        <p id="backup-reminder" class="backup-reminder" hidden></p>
+        <div class="data-actions">
+          <button id="export-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Exportieren (.json)</button>
+          <label class="primary-btn file-label">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg> Importieren
+            <input type="file" id="import-file" accept="application/json,.json" hidden />
+          </label>
+        </div>
+        <p id="data-status" class="muted"></p>
+      </details>
+
+      <details class="settings-group">
+        <summary>Diagnose &amp; Zurücksetzen</summary>
+        <p class="muted">Letzte Fehler werden lokal protokolliert. Zurücksetzen löscht dauerhaft alles in diesem Browser.</p>
+        <div class="data-actions">
+          <button id="err-show-btn" class="secondary-btn">Protokoll anzeigen</button>
+          <button id="err-clear-btn" class="secondary-btn">Protokoll leeren</button>
+        </div>
+        <pre id="err-log" class="err-log" hidden></pre>
+        <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
+      </details>
     </section>
     </main>
   </div>

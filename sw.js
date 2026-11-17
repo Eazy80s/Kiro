@@ -1,5 +1,5 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v9";
+const CACHE = "study-tracker-v10";
 const ASSETS = [
   "index.html",
   "styles.css",
@@ -13,7 +13,8 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // NICHT mehr sofort skipWaiting: Die App zeigt stattdessen einen Update-Hinweis.
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
 });
 
 self.addEventListener("activate", (e) => {
@@ -22,6 +23,11 @@ self.addEventListener("activate", (e) => {
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+// Die App kann den wartenden SW auffordern, sofort zu übernehmen (Update-Button).
+self.addEventListener("message", (e) => {
+  if (e.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 // Cache-first for our own assets; fall back to network otherwise.

@@ -61,6 +61,9 @@ check(dom.includes('data-tab="settings"'), "Einstellungen-Tab vorhanden");
 check(!dom.includes('data-tab="data"'), "Alter 'Daten'-Tab ist entfernt");
 check(dom.includes('id="study-chart"') || dom.includes("Verlauf"), "Lernzeit-Verlauf-Bereich vorhanden");
 check(dom.includes('id="snackbar"'), "Snackbar-Element vorhanden");
+check(dom.includes('id="update-banner"'), "Update-Banner-Element vorhanden");
+check(dom.includes('id="week-agenda"'), "Wochen-Agenda-Element vorhanden");
+check(/<svg[^>]*class="ic/.test(dom), "SVG-Icons werden gerendert (statt Emojis)");
 
 console.log(`\nBrowser-Smoke-Test: ${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

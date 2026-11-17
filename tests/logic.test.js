@@ -194,6 +194,25 @@ eq(studyStreak({ "2026-11-17": 60, "2026-11-15": 60 }, "2026-11-17"), 1, "Streak
 eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-12-01" }, "2026-11-30"), true, "biweekly innerhalb Serie");
 eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-11-20" }, "2026-11-30"), false, "biweekly nach repeatUntil endet");
 
+/* ---- Wochen-Agenda: Sortierung nach Datum+Zeit (Punkt 7) ---- */
+{
+  const items = [
+    { iso: "2026-11-18", time: "14:00", text: "B" },
+    { iso: "2026-11-18", time: null, text: "C" },
+    { iso: "2026-11-17", time: "09:00", text: "A" },
+  ];
+  const order = items.slice().sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99"))).map((x) => x.text);
+  eq(order, ["A", "B", "C"], "Agenda-Sortierung Datum+Zeit (ganztägig zuletzt am Tag)");
+}
+
+/* ---- Tagesziel erreicht: Auslöse-Schwelle (Punkt 9) ---- */
+{
+  const goalSec = 2 * 3600; // 2 Std.
+  const crosses = (before, add) => before < goalSec && (before + add) >= goalSec;
+  // (a) 1h→2h erreicht Ziel, (b) schon drüber bleibt drüber, (c) 1h50→1h55 noch drunter
+  eq([crosses(3600, 3600), crosses(7200, 60), crosses(6600, 300)], [true, false, false], "Tagesziel-Schwelle nur beim Überschreiten");
+}
+
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

@@ -646,3 +646,60 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .print-view { display: block !important; color: #000; padding: 0; }
   @page { margin: 1.5cm; }
 }
+
+/* ============================================================
+   Viertes Paket: Icons, Update-Banner, Agenda, Layout, Feinschliff
+   ============================================================ */
+
+/* SVG-Icons (Punkt 1) */
+.ic { width: 1.1em; height: 1.1em; vertical-align: -0.15em; flex: 0 0 auto; }
+.primary-btn .ic, .secondary-btn .ic { vertical-align: -0.18em; margin-right: 2px; }
+.del-btn .ic, .pin-btn .ic, .collapse-btn .ic { width: 1.05rem; height: 1.05rem; }
+.link-btn .ic { width: 0.95em; height: 0.95em; }
+
+/* Update-Banner (Punkt 5) */
+.update-banner {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  background: var(--accent); color: #fff; padding: 12px 16px; border-radius: 12px;
+  display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-lg);
+  z-index: 1100; font-size: 0.9rem; max-width: calc(100vw - 32px);
+}
+.update-reload { background: #fff; color: var(--accent); border: none; border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
+.update-dismiss { background: transparent; border: none; color: rgba(255,255,255,0.85); cursor: pointer; font-size: 1rem; padding: 2px 6px; }
+.update-dismiss:hover { color: #fff; }
+
+/* Wochen-Agenda (Punkt 7) */
+.agenda-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.agenda-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: var(--shadow-sm); font-size: 0.88rem;
+}
+.agenda-item.agenda-today { border-color: var(--accent); }
+.agenda-when { color: var(--muted); font-size: 0.8rem; white-space: nowrap; min-width: 86px; font-variant-numeric: tabular-nums; }
+.agenda-tag { flex: 0 0 auto; }
+.agenda-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Leere Zustände mit Symbol (Punkt 2) — nur bei opt-in-Klasse, um Doppel-Emojis zu vermeiden */
+.empty-state.illustrated::before {
+  content: "🗒️"; display: block; font-size: 1.7rem; margin-bottom: 8px; opacity: 0.7;
+}
+
+/* Sanfterer Tab-Übergang (Punkt 4) */
+.tab-panel.active { animation: slideUp 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tab-panel.active { animation: none; } }
+
+/* Mehr Platz & mehrspaltige Listen auf breiten Screens (Punkt 3) */
+@media (min-width: 900px) {
+  main { max-width: 920px; }
+  /* Karten-/Agenda-Listen nutzen zwei Spalten statt einer sehr langen Spalte */
+  #dashboard .module-progress-list,
+  #dashboard .agenda-list,
+  #dashboard .upcoming-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  /* Fokus-Liste bleibt einspaltig (Teilaufgaben brauchen Breite) */
+}

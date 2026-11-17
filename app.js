@@ -426,6 +426,7 @@ function renderDashboard() {
   renderPinnedModules();
   renderOverdue();
   renderPinnedTasks();
+  renderWeekAgenda();
   renderUpcoming();
 }
 
@@ -523,7 +524,7 @@ function renderPinnedTasks() {
     .filter((g) => g.tasks.length > 0);
 
   if (!groups.length) {
-    list.innerHTML = `<p class="empty-state">Heute keine Aufgaben geplant. Gib einer Aufgabe in „Module“ ein Datum oder plane sie im Kalender.</p>`;
+    list.innerHTML = `<p class="empty-state illustrated">Heute keine Aufgaben geplant. Gib einer Aufgabe in „Module“ ein Datum oder plane sie im Kalender.</p>`;
     return;
   }
 
@@ -715,7 +716,7 @@ function renderDayDetail() {
     html += `
       <div class="d-event">
         <span class="d-left"><span class="tag ${e.type}"${colorStyle}>${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
-        <button class="del-btn" data-del-event="${e.id}" title="${delTitle}">✕</button>
+        <button class="del-btn" data-del-event="${e.id}" title="${delTitle}" aria-label="${delTitle}">${icon("close")}</button>
       </div>`;
   });
 
@@ -728,7 +729,7 @@ function renderDayDetail() {
           <span class="tag task">Aufgabe</span>
           <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>
         </span>
-        <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen">✕</button>
+        <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen" aria-label="Von diesem Tag entfernen">${icon("close")}</button>
       </div>`;
   });
 
@@ -917,7 +918,7 @@ function renderModules() {
   wrap.innerHTML = "";
 
   if (!state.modules.length) {
-    wrap.innerHTML = `<p class="empty-state">Noch keine Module. Füge oben dein erstes hinzu — oder <button id="load-sample" class="link-btn">Beispieldaten laden</button>, um die App auszuprobieren.</p>`;
+    wrap.innerHTML = `<p class="empty-state illustrated">Noch keine Module. Füge oben dein erstes hinzu — oder <button id="load-sample" class="link-btn">Beispieldaten laden</button>, um die App auszuprobieren.</p>`;
     const sampleBtn = document.getElementById("load-sample");
     if (sampleBtn) sampleBtn.addEventListener("click", loadSampleData);
     return;
@@ -981,7 +982,7 @@ function renderGradeComponents(wrap, m) {
       <input type="text" class="gc-label" data-gc-label placeholder="z. B. Klausur" value="${escapeHtml(c.label || "")}" aria-label="Bezeichnung der Teilnote" />
       <input type="number" class="gc-grade" data-gc-grade step="0.1" min="1" max="5" placeholder="Note" value="${c.grade ?? ""}" aria-label="Note der Teilnote" />
       <input type="number" class="gc-weight" data-gc-weight min="0" step="5" placeholder="Gewicht %" value="${c.weight ?? ""}" aria-label="Gewicht in Prozent" />
-      <button class="del-btn" data-gc-del title="Teilnote löschen" aria-label="Teilnote löschen">✕</button>
+      <button class="del-btn" data-gc-del title="Teilnote löschen" aria-label="Teilnote löschen">${icon("close")}</button>
     </div>`).join("");
 
   const warn = (comps.length && totalW !== 100)
@@ -991,7 +992,7 @@ function renderGradeComponents(wrap, m) {
     ${comps.length ? `<div class="gc-head">Teilnoten (Endnote wird gewichtet berechnet)</div>` : ""}
     ${rows}
     ${warn}
-    <button class="link-btn" data-gc-add>+ Teilnote hinzufügen</button>`;
+    <button class="link-btn" data-gc-add>${icon("plus")} Teilnote hinzufügen</button>`;
 
   wrap.querySelector("[data-gc-add]").addEventListener("click", () => {
     m.gradeComponents.push({ id: uid(), label: "", grade: null, weight: 0 });
@@ -1030,7 +1031,7 @@ function renderModuleCard(m) {
   card.innerHTML = `
     <div class="module-head">
       <h3>
-        <button class="collapse-btn" data-collapse title="${m.collapsed ? "Ausklappen" : "Einklappen"}" aria-label="${m.collapsed ? "Modul ausklappen" : "Modul einklappen"}" aria-expanded="${!m.collapsed}">${m.collapsed ? "▸" : "▾"}</button>
+        <button class="collapse-btn" data-collapse title="${m.collapsed ? "Ausklappen" : "Einklappen"}" aria-label="${m.collapsed ? "Modul ausklappen" : "Modul einklappen"}" aria-expanded="${!m.collapsed}">${icon(m.collapsed ? "chevronRight" : "chevronDown")}</button>
         ${escapeHtml(m.name)}
         ${m.ects ? `<span class="badge">${m.ects} ECTS</span>` : ""}
         ${m.semester ? `<span class="badge sem">${escapeHtml(m.semester)}</span>` : ""}
@@ -1038,8 +1039,8 @@ function renderModuleCard(m) {
       </h3>
       <div class="module-actions">
         <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
-        <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Als „In Bearbeitung“ markieren (anheften)" aria-label="Modul anheften/lösen" aria-pressed="${m.pinned}">📌</button>
-        <button class="del-btn" data-del-module title="Modul löschen" aria-label="Modul löschen">🗑</button>
+        <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Als „In Bearbeitung“ markieren (anheften)" aria-label="Modul anheften/lösen" aria-pressed="${m.pinned}">${icon("pin")}</button>
+        <button class="del-btn" data-del-module title="Modul löschen" aria-label="Modul löschen">${icon("trash")}</button>
       </div>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -1085,7 +1086,7 @@ function renderModuleCard(m) {
         <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
         ${dueBadge}
         <input type="date" class="task-date" data-date value="${t.date || ""}" title="Aufgabe terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum der Aufgabe ${escapeHtml(t.text)}" />
-        <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="Aufgabe ${escapeHtml(t.text)} löschen">✕</button>
+        <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="Aufgabe ${escapeHtml(t.text)} löschen">${icon("close")}</button>
       </div>
       <ul class="subtask-list"></ul>
       <form class="add-subtask-form"><input type="text" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
@@ -1098,7 +1099,7 @@ function renderModuleCard(m) {
       sli.innerHTML = `
         <input type="checkbox" id="${sId}" ${s.done ? "checked" : ""} />
         <label for="${sId}" class="${s.done ? "done" : ""}">${escapeHtml(s.text)}</label>
-        <button class="del-btn" title="Teilaufgabe löschen" aria-label="Teilaufgabe ${escapeHtml(s.text)} löschen">✕</button>`;
+        <button class="del-btn" title="Teilaufgabe löschen" aria-label="Teilaufgabe ${escapeHtml(s.text)} löschen">${icon("close")}</button>`;
       sli.querySelector("input").addEventListener("change", (ev) => {
         s.done = ev.target.checked;
         if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
@@ -1392,9 +1393,22 @@ function saveStats() { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }
 function addStudySeconds(sec) {
   if (sec <= 0) return;
   const d = todayIso();
-  stats.daily[d] = (stats.daily[d] || 0) + sec;
+  const before = stats.daily[d] || 0;
+  stats.daily[d] = before + sec;
   if (pomoModuleId) stats.perModule[pomoModuleId] = (stats.perModule[pomoModuleId] || 0) + sec;
   saveStats();
+  // Tagesziel erreicht? Einmal pro Tag feiern (Punkt 9).
+  const goalSec = ((stats.goals && stats.goals.day) || DEFAULT_GOALS.day) * 3600;
+  if (before < goalSec && stats.daily[d] >= goalSec) celebrateDailyGoal();
+}
+
+// Feiert das Erreichen des Tages-Lernziels (einmal täglich).
+function celebrateDailyGoal() {
+  let last = null;
+  try { last = localStorage.getItem("study-tracker-goal-celebrated"); } catch (e) {}
+  if (last === todayIso()) return;
+  try { localStorage.setItem("study-tracker-goal-celebrated", todayIso()); } catch (e) {}
+  showSnackbar("🎉 Tagesziel erreicht — stark! Weiter so.");
 }
 
 let pomoMode = "focus";
@@ -1939,6 +1953,29 @@ function showSnackbar(message, undoFn) {
   snackTimer = setTimeout(() => bar.classList.remove("show"), 6000);
 }
 
+/* ---------- SVG-Icons (Punkt 1) — einheitlich statt Emojis ---------- */
+// Schlanke Inline-SVGs (currentColor), 1em groß, dekorativ (aria-hidden).
+const ICONS = {
+  trash: '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6"/><path d="M10 11v6M14 11v6"/>',
+  pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3H7l3-3-1-6z"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  chevronRight: '<path d="m9 6 6 6-6 6"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+  upload: '<path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  print: '<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/>',
+  cap: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>',
+};
+function icon(name, cls) {
+  const p = ICONS[name] || "";
+  return `<svg class="ic ${cls || ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+
 /* ---------- Utilities ---------- */
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -2280,6 +2317,81 @@ if (errClearBtn) {
     const box = document.getElementById("err-log");
     if (box) { box.hidden = false; box.textContent = "Fehlerprotokoll geleert."; }
   });
+}
+
+/* ============================================================
+   PWA-UPDATE-HINWEIS (Punkt 5)
+   Von der SW-Registrierung in index.html aufgerufen.
+   ============================================================ */
+window.showUpdateBanner = function (reg) {
+  const bar = document.getElementById("update-banner");
+  if (!bar) return;
+  bar.hidden = false;
+  const reload = document.getElementById("update-reload");
+  const dismiss = document.getElementById("update-dismiss");
+  if (reload) reload.onclick = () => {
+    if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
+    else window.location.reload();
+  };
+  if (dismiss) dismiss.onclick = () => { bar.hidden = true; };
+};
+
+/* ============================================================
+   TASTENKÜRZEL (Punkt 6) — nur am Desktop sinnvoll
+   N = neues Modul · / = Suche · 1–5 = Tabs wechseln
+   ============================================================ */
+const TAB_ORDER = ["dashboard", "calendar", "modules", "pomodoro", "settings"];
+function switchTab(name) {
+  const btn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
+document.addEventListener("keydown", (e) => {
+  // In Eingabefeldern keine Kürzel abfangen
+  const t = e.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (typing) {
+    if (e.key === "Escape") t.blur();
+    return;
+  }
+  if (e.key >= "1" && e.key <= "5") { switchTab(TAB_ORDER[Number(e.key) - 1]); }
+  else if (e.key.toLowerCase() === "n") { switchTab("modules"); const el = document.getElementById("module-name"); if (el) { e.preventDefault(); el.focus(); } }
+  else if (e.key === "/") { switchTab("modules"); const el = document.getElementById("module-search"); if (el) { e.preventDefault(); el.focus(); } }
+});
+
+/* ============================================================
+   WOCHENLISTE (Punkt 7) — kompakte Agenda „diese Woche“
+   ============================================================ */
+function renderWeekAgenda() {
+  const wrap = document.getElementById("week-agenda");
+  if (!wrap) return;
+  const today = todayIso();
+  const end = new Date(today + "T00:00:00"); end.setDate(end.getDate() + 6);
+  const endIso = isoOf(end);
+
+  // Tage von heute bis +6 sammeln, jeweils Events (inkl. Wiederholung) + geplante Aufgaben.
+  const items = [];
+  let d = new Date(today + "T00:00:00");
+  for (let i = 0; i < 7; i++) {
+    const iso = isoOf(d);
+    eventsOnDate(iso).forEach((e) => items.push({ iso, time: e.time, kind: e.type, text: e.title }));
+    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) items.push({ iso, time: null, kind: "task", text: `${task.text} · ${module.name}` }); });
+    d.setDate(d.getDate() + 1);
+  }
+  if (!items.length) { wrap.innerHTML = `<p class="empty-state">Diese Woche ist nichts geplant. 🌤️</p>`; return; }
+
+  items.sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99")));
+  const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  wrap.innerHTML = items.map((it) => {
+    const dt = new Date(it.iso + "T00:00:00");
+    const when = `${WD[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}.` + (it.time ? ` ${it.time}` : "");
+    const todayCls = it.iso === today ? " agenda-today" : "";
+    return `<li class="agenda-item${todayCls}">
+      <span class="agenda-when">${when}</span>
+      <span class="agenda-tag tag ${it.kind}">${typeLabel(it.kind)}</span>
+      <span class="agenda-text">${escapeHtml(it.text)}</span>
+    </li>`;
+  }).join("");
 }
 
 /* ---------- Boot ---------- */

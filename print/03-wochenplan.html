@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Wochenplan</title>
+<link rel="stylesheet" href="print.css">
+<style>
+  @page { size: A4 landscape; margin: 11mm 11mm 10mm 11mm; }
+  .wk { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .wk th { background: var(--surface-2); font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 5px; }
+  .wk td { border: 1px solid var(--grid); height: 12mm; padding: 2px 4px; vertical-align: top; }
+  .wk td.time { width: 18mm; background: #fafbfc; font-size: 8.5pt; font-weight: 700; color: var(--muted); text-align: center; vertical-align: middle; }
+  .wk td.we { background: #fafbfc; }
+</style>
+</head>
+<body class="landscape">
+  <div class="sheet-head">
+    <div class="title"><small>🎓 Studien-Tracker · 📅 Wochenplan</small>Woche <span class="line" style="min-width:50mm"></span></div>
+    <div class="meta"><div>KW <span class="line" style="min-width:20mm"></span></div></div>
+  </div>
+
+  <table class="wk">
+    <thead>
+      <tr>
+        <th>Zeit</th>
+        <th>Montag</th><th>Dienstag</th><th>Mittwoch</th><th>Donnerstag</th><th>Freitag</th><th>Samstag</th><th>Sonntag</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="time">08:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">09:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">10:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">11:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">12:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">13:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">14:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">15:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">16:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">17:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">18:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">19:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+      <tr><td class="time">20:00</td><td></td><td></td><td></td><td></td><td></td><td class="we"></td><td class="we"></td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

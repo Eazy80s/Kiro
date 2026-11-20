@@ -1,0 +1,172 @@
+/* ============================================================
+   Studien-Tracker — Druckvorlagen (analoge Version)
+   Gemeinsames Stylesheet für alle A4-Blätter zum Ausdrucken.
+   Farben & Look angelehnt an die App (styles.css).
+   ============================================================ */
+
+:root {
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #4f46e5;
+  --accent-2: #16a34a;
+  --danger: #dc2626;
+  --surface-2: #f1f3f5;
+  --border: #cbd0d6;
+  --border-strong: #9aa1ab;
+  --grid: #d7dbe0;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 14mm 13mm 12mm 13mm;
+}
+@page landscape {
+  size: A4 landscape;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  color: var(--text);
+  line-height: 1.4;
+  font-size: 11pt;
+  background: #fff;
+}
+
+/* ---- Seitenkopf ---- */
+.sheet-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  border-bottom: 2.5px solid var(--accent);
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+.sheet-head .title {
+  font-size: 20pt;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.sheet-head .title small {
+  display: block;
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.sheet-head .meta {
+  text-align: right;
+  font-size: 9pt;
+  color: var(--muted);
+}
+.sheet-head .meta .line {
+  display: inline-block;
+  min-width: 46mm;
+  border-bottom: 1px solid var(--border-strong);
+  margin-left: 6px;
+}
+
+/* ---- Abschnittsüberschrift ---- */
+.section-label {
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+
+/* ---- Tabellen ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  border: 1px solid var(--grid);
+  padding: 6px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+thead th {
+  background: var(--surface-2);
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Schreibzeilen in Tabellen hoch genug zum Eintragen */
+tbody td { height: 9.5mm; }
+tbody tr:nth-child(even) td { background: #fafbfc; }
+
+/* schmale Spalten */
+.c-num { width: 10mm; text-align: center; }
+.c-mid { width: 24mm; }
+.c-date { width: 26mm; }
+.c-ects { width: 16mm; text-align: center; }
+.c-note { width: 18mm; text-align: center; }
+
+/* ---- Kästchen zum Ankreuzen ---- */
+.box {
+  display: inline-block;
+  width: 4.2mm; height: 4.2mm;
+  border: 1.4px solid var(--border-strong);
+  border-radius: 2px;
+  vertical-align: -0.8mm;
+}
+.circle {
+  display: inline-block;
+  width: 4.6mm; height: 4.6mm;
+  border: 1.4px solid var(--border-strong);
+  border-radius: 50%;
+  vertical-align: -0.8mm;
+}
+
+/* ---- leere Schreiblinien ---- */
+.lines { margin-top: 4px; }
+.lines .ln {
+  border-bottom: 1px solid var(--border);
+  height: 8.5mm;
+}
+
+/* ---- Hinweiszeile / Fußnote ---- */
+.hint { font-size: 8pt; color: var(--muted); margin-top: 4px; }
+.footer {
+  position: fixed;
+  bottom: 4mm; left: 13mm; right: 13mm;
+  display: flex; justify-content: space-between;
+  font-size: 7.5pt; color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 3px;
+}
+
+/* ---- kleine Helfer ---- */
+.row { display: flex; gap: 10px; }
+.col { flex: 1; }
+.pill {
+  display: inline-block;
+  font-size: 8pt;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 8.5pt; color: var(--muted); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+.grade-scale {
+  display: flex; gap: 0; margin-top: 4px;
+  font-size: 8pt; color: var(--muted);
+}
+.grade-scale div {
+  flex: 1; border: 1px solid var(--grid);
+  text-align: center; padding: 3px 0;
+}
+
+/* Querformat-Blätter */
+body.landscape { font-size: 10.5pt; }
+
+@media print {
+  .no-print { display: none !important; }
+}

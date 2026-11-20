@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lern-Serie (Streak)</title>
+<link rel="stylesheet" href="print.css">
+<style>
+  .streak { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .streak td { border:1px solid var(--grid); height:12mm; text-align:right; padding:2px 3px; font-size:8pt; color:var(--muted); vertical-align:top; }
+  .streak th { background:var(--surface-2); font-size:8pt; text-transform:uppercase; color:var(--muted); padding:4px; }
+</style>
+</head>
+<body>
+  <div class="sheet-head">
+    <div class="title"><small>🎓 Studien-Tracker · 🔥 Streak</small>Lern-Serie</div>
+    <div class="meta"><div>Monat <span class="line"></span></div></div>
+  </div>
+
+  <div class="hint">Jeden Tag, an dem du gelernt hast, ein Feld ausmalen. Ziel: eine möglichst lange Kette (Streak) ohne Lücke.</div>
+
+  <div class="row" style="margin-top:8px">
+    <div class="col"><div class="section-label">Aktuelle Serie</div><div style="border:1px solid var(--border-strong);height:14mm;border-radius:6px"></div></div>
+    <div class="col"><div class="section-label">Längste Serie</div><div style="border:1px solid var(--border-strong);height:14mm;border-radius:6px"></div></div>
+    <div class="col"><div class="section-label">Lerntage gesamt</div><div style="border:1px solid var(--border-strong);height:14mm;border-radius:6px"></div></div>
+  </div>
+
+  <div class="section-label">Kalender zum Ausmalen</div>
+  <table class="streak">
+    <thead><tr><th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th></tr></thead>
+    <tbody>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <div class="footer"><span>Studien-Tracker · Lern-Serie</span><span>Dranbleiben zählt</span></div>
+</body>
+</html>

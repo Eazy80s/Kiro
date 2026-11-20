@@ -1,0 +1,241 @@
+/* ============================================================
+   Studien-Tracker — Druckvorlagen (analoge Version)
+   Auf A5 optimiert. Jedes Blatt füllt die Seite vertikal:
+   .sheet ist eine Flex-Spalte über die ganze Seitenhöhe, und das
+   mit .grow markierte Element (meist die Haupttabelle) dehnt sich
+   auf den verbleibenden Platz aus.
+
+   Format über Klasse auf <html>:
+     .fmt-a5-portrait (Standard) · .fmt-a5-landscape
+     .fmt-a4-portrait · .fmt-a4-landscape
+   Toner-sparend über .toner-save auf <html>.
+   ============================================================ */
+
+:root {
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #4f46e5;
+  --accent-2: #16a34a;
+  --danger: #dc2626;
+  --surface-2: #eef0f3;
+  --border: #c7ccd3;
+  --border-strong: #9aa1ab;
+  --grid: #d2d7dd;
+  --stripe: #f7f8fa;
+
+  --exam: #dc2626;
+  --deadline: #4f46e5;
+  --lecture: #16a34a;
+  --other: #6b7280;
+}
+
+html.toner-save {
+  --accent: #333; --accent-2: #333;
+  --surface-2: #fff; --stripe: #fff;
+  --exam: #000; --deadline: #000; --lecture: #000; --other: #000;
+}
+html.toner-save thead th { background: #fff; }
+
+/* ---- Seitengröße & Ränder (A5 = Standard, enge Ränder) ---- */
+@page { size: A5 portrait; margin: 8mm 8mm 7mm 8mm; }
+html.fmt-a5-landscape @page { size: A5 landscape; margin: 7mm 8mm; }
+html.fmt-a4-portrait  @page { size: A4 portrait;  margin: 12mm 12mm 10mm; }
+html.fmt-a4-landscape @page { size: A4 landscape; margin: 10mm 12mm; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  color: var(--text);
+  line-height: 1.32;
+  font-size: 9.2pt;
+  background: #fff;
+  height: 100%;
+}
+html.fmt-a4-portrait body, html.fmt-a4-landscape body { font-size: 10.5pt; line-height: 1.4; }
+
+/* ---- Blatt füllt die Seite ---- */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;         /* füllt die bedruckbare Fläche */
+}
+.sheet > .grow { flex: 1 1 auto; }   /* Haupttabelle dehnt sich */
+
+/* ---- Seitenkopf ---- */
+.sheet-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+.sheet-head .title {
+  font-size: 15pt;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+html.fmt-a4-portrait .sheet-head .title, html.fmt-a4-landscape .sheet-head .title { font-size: 19pt; }
+.sheet-head .title small {
+  display: block;
+  font-size: 6.8pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1px;
+}
+.sheet-head .meta { text-align: right; font-size: 7.6pt; color: var(--muted); }
+.sheet-head .meta .line {
+  display: inline-block;
+  min-width: 26mm;
+  border-bottom: 1px solid var(--border-strong);
+  margin-left: 4px;
+}
+
+/* ---- Abschnittsüberschrift (kompakt) ---- */
+.section-label {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 7px 0 3px;
+  flex: 0 0 auto;
+}
+
+/* ---- Tabellen ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  border: 1px solid var(--grid);
+  padding: 3px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+thead th {
+  background: var(--surface-2);
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 3px 5px;
+}
+/* Eine Tabelle mit .grow verteilt ihre Datenzeilen gleichmäßig auf die Höhe. */
+table.grow { height: 100%; }
+table.grow tbody tr { height: 1%; }   /* Zeilen strecken sich gleichmäßig */
+tbody td { height: 8mm; }
+tbody tr:nth-child(even) td { background: var(--stripe); }
+table.data tbody td { height: auto; min-height: 7mm; }
+
+/* Kompakte Key-Value-Tabellen (Eckdaten/Termine) — nicht strecken */
+table.kv td { height: 6.6mm; }
+table.kv td:first-child { color: var(--muted); }
+
+/* schmale Spalten */
+.c-num { width: 7mm; text-align: center; }
+.c-mid { width: 18mm; }
+.c-date { width: 20mm; }
+.c-ects { width: 12mm; text-align: center; }
+.c-note { width: 13mm; text-align: center; }
+.c-bar  { width: 26mm; }
+.ctr { text-align: center; }
+
+/* ---- Fortschrittsbalken ---- */
+.bar { display: inline-block; width: 100%; height: 4mm; border: 1px solid var(--border-strong); border-radius: 3px; overflow: hidden; background: #fff; vertical-align: middle; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
+html.toner-save .bar > span { background: #bbb; }
+
+/* ---- Ankreuzkästchen ---- */
+.box {
+  display: inline-block;
+  width: 3.6mm; height: 3.6mm;
+  border: 1.3px solid var(--border-strong);
+  border-radius: 2px;
+  vertical-align: -0.6mm;
+}
+.box.checked { background: var(--accent); border-color: var(--accent); position: relative; }
+.box.checked::after {
+  content: ""; position: absolute; left: 1mm; top: 0.3mm;
+  width: 1.1mm; height: 2mm; border: solid #fff; border-width: 0 0.6mm 0.6mm 0; transform: rotate(45deg);
+}
+html.toner-save .box.checked { background: #fff; }
+html.toner-save .box.checked::after { border-color: #000; }
+
+/* ---- Schreiblinien ---- */
+.lines { flex: 0 0 auto; }
+.lines .ln { border-bottom: 1px solid var(--border); height: 7mm; }
+
+/* ---- Modul-Detailblatt: Kopf-Felder ---- */
+.kv-grid { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; margin-bottom: 2px; }
+.kv-grid .f { flex: 1; min-width: 26mm; }
+.kv-grid .f label { font-size: 6.6pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); display: block; }
+.kv-grid .f .fline { display: block; border-bottom: 1px solid var(--border-strong); height: 5.5mm; }
+.kv-grid .f .fval { font-weight: 600; border-bottom: 1px solid var(--border); min-height: 5.5mm; }
+.sub { padding-left: 5mm; color: var(--muted); }
+
+/* ---- Hinweis / Fußnote ---- */
+.hint { font-size: 6.6pt; color: var(--muted); }
+.footer {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  display: flex; justify-content: space-between;
+  font-size: 6.2pt; color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 2px;
+}
+
+/* ---- Helfer ---- */
+.row { display: flex; gap: 8px; flex: 0 0 auto; }
+.row.cols-2 > .col { flex: 1; }
+.pill { display: inline-block; font-size: 6.6pt; padding: 0 5px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); }
+.pill.done { border-color: var(--accent-2); color: var(--accent-2); }
+.legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 7pt; color: var(--muted); margin-top: 3px; justify-content: flex-end; }
+.legend span { display: inline-flex; align-items: center; gap: 3px; }
+.dot { display: inline-block; width: 2.6mm; height: 2.6mm; border-radius: 50%; }
+.dot.exam { background: var(--exam); }
+.dot.deadline { background: var(--deadline); }
+.dot.lecture { background: var(--lecture); }
+.dot.other { background: var(--other); }
+html.toner-save .dot { border: 1px solid #000; }
+
+/* ---- Kalender ---- */
+.cal { table-layout: fixed; }
+.cal th { background: var(--surface-2); font-size: 7pt; text-transform: uppercase; color: var(--muted); padding: 3px; text-align: left; }
+.cal.grow { height: 100%; }
+.cal.grow tbody tr { height: 1%; }
+.cal td { border: 1px solid var(--grid); vertical-align: top; padding: 2px 3px; }
+.cal td .dn { font-size: 7.5pt; font-weight: 700; color: var(--muted); }
+.cal td.we { background: var(--stripe); }
+.cal td.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal .ev { font-size: 6pt; line-height: 1.2; border-radius: 2px; padding: 0 2px; margin-top: 1px; color: #fff; overflow: hidden; }
+.cal .ev.exam { background: var(--exam); }
+.cal .ev.deadline { background: var(--deadline); }
+.cal .ev.lecture { background: var(--lecture); }
+.cal .ev.other { background: var(--other); }
+html.toner-save .cal .ev { background: #fff !important; color: #000 !important; border: 1px solid #000; }
+/* Wochenplan: Zeitspalte */
+.cal.week .time, .cal.week td.time {
+  width: 14mm; background: var(--stripe); font-weight: 700; color: var(--muted);
+  text-align: center; vertical-align: middle; font-size: 7.4pt;
+}
+
+/* Kalender: KW-Spalte */
+.cal .c-kw { width: 9mm; }
+.cal td.kw { background: var(--stripe); text-align: center; vertical-align: middle; font-size: 7pt; font-weight: 700; color: var(--muted); }
+
+/* Kalender: Mini-To-do-Spalte am rechten Rand */
+.cal .c-todo { width: 34mm; }
+.cal td.todo { vertical-align: top; padding: 3px 4px; }
+.cal .todo-lines { display: flex; flex-direction: column; height: 100%; gap: 0; }
+.cal .todo-lines .tln { flex: 1 1 auto; border-bottom: 1px solid var(--border); display: flex; align-items: center; min-height: 7mm; }
+.cal .todo-lines .tln:last-child { border-bottom: none; }
+
+/* Seitenumbruch (Heft) */
+.page-break { break-after: page; page-break-after: always; }
+
+@media print { .no-print { display: none !important; } }

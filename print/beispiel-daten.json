@@ -1,0 +1,62 @@
+{
+  "modules": [
+    {
+      "id": "m1", "name": "Analysis I", "ects": 9, "grade": 2.3, "targetGrade": 2.0,
+      "semester": "WS 2026/27", "completed": true, "pinned": false, "collapsed": false,
+      "gradeComponents": [],
+      "tasks": [
+        { "id": "t1", "text": "Übungsblatt 1", "done": true, "date": "2026-11-18", "subtasks": [] },
+        { "id": "t2", "text": "Klausurvorbereitung", "done": true, "date": null, "subtasks": [] }
+      ]
+    },
+    {
+      "id": "m2", "name": "Lineare Algebra", "ects": 9, "grade": null, "targetGrade": 1.7,
+      "semester": "WS 2026/27", "completed": false, "pinned": true, "collapsed": false,
+      "gradeComponents": [
+        { "id": "c1", "label": "Klausur", "grade": 2.0, "weight": 70 },
+        { "id": "c2", "label": "Übung", "grade": 1.3, "weight": 30 }
+      ],
+      "tasks": [
+        { "id": "t3", "text": "Blatt 5 abgeben", "done": false, "date": "2026-11-20", "subtasks": [
+          { "id": "s1", "text": "Aufgabe 1", "done": true },
+          { "id": "s2", "text": "Aufgabe 2", "done": false }
+        ] },
+        { "id": "t4", "text": "Tutorium vorbereiten", "done": false, "date": "2026-11-20", "subtasks": [] },
+        { "id": "t5", "text": "Zusammenfassung Kapitel 3", "done": false, "date": null, "subtasks": [] }
+      ]
+    },
+    {
+      "id": "m3", "name": "Programmierung", "ects": 6, "grade": null, "targetGrade": 1.3,
+      "semester": "WS 2026/27", "completed": false, "pinned": true, "collapsed": false,
+      "gradeComponents": [],
+      "tasks": [
+        { "id": "t6", "text": "Projekt abgeben", "done": false, "date": "2026-12-05", "subtasks": [] }
+      ]
+    },
+    {
+      "id": "m4", "name": "Statistik", "ects": 6, "grade": null, "targetGrade": null,
+      "semester": "WS 2026/27", "completed": false, "pinned": false, "collapsed": false,
+      "gradeComponents": [], "tasks": []
+    }
+  ],
+  "events": [
+    { "id": "e1", "date": "2026-11-20", "time": "10:00", "title": "LA Blatt 5", "type": "deadline", "repeat": null, "repeatUntil": null, "color": null },
+    { "id": "e2", "date": "2026-11-24", "time": "09:00", "title": "Analysis Vorlesung", "type": "lecture", "repeat": "weekly", "repeatUntil": null, "color": null },
+    { "id": "e3", "date": "2026-12-05", "time": null, "title": "Programmier-Projekt", "type": "deadline", "repeat": null, "repeatUntil": null, "color": null },
+    { "id": "e4", "date": "2026-12-15", "time": "14:00", "title": "Lineare Algebra", "type": "exam", "repeat": null, "repeatUntil": null, "color": null },
+    { "id": "e5", "date": "2026-11-27", "time": null, "title": "Statistik Abgabe", "type": "deadline", "repeat": null, "repeatUntil": null, "color": null }
+  ],
+  "schemaVersion": 6,
+  "updatedAt": 1763625600000,
+  "_stats": {
+    "sessions": 42,
+    "daily": {
+      "2026-11-16": 7200, "2026-11-17": 5400, "2026-11-18": 9000,
+      "2026-11-19": 3600, "2026-11-20": 1800,
+      "2026-11-10": 3600, "2026-11-11": 5400, "2026-11-12": 7200, "2026-11-13": 1800
+    },
+    "perModule": { "m1": 54000, "m2": 36000, "m3": 18000 },
+    "goals": { "day": 6, "week": 30, "month": 120, "year": 1000 }
+  },
+  "_pomodoro": { "focus": 25, "short": 5, "long": 15 }
+}

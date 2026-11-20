@@ -40,8 +40,10 @@ function sheet(inner) { return `<div class="sheet">${inner}</div>`; }
    01 — Semesterübersicht (A5 hoch)
    Kopf · Eckdaten+Termine · Modultabelle (füllt) · Ziele/Notizen
    ============================================================ */
-export function semesteruebersicht(data) {
+export function semesteruebersicht(data, opts = {}) {
   const sem = data ? (data.modules.find((m) => m.semester)?.semester || "") : "";
+  // Gewünschte Gesamtzeilenzahl (steuerbar via --zeilen); Standard 12.
+  const targetRows = Math.max(1, opts.rows || 12);
 
   // Modultabelle füllt die Seite: genug Zeilen, damit kein leerer Unterteil bleibt.
   let modRows;
@@ -54,12 +56,11 @@ export function semesteruebersicht(data) {
       <td class="c-note ctr">${m._grade != null ? commaNum(m._grade) : ""}</td>
       <td class="c-bar">${bar(m._progress)}</td>
     </tr>`).join("");
-    // Bis auf 12 Zeilen mit leeren auffüllen, damit die Tabelle die Seite füllt.
-    const fill = Math.max(0, 12 - data.modules.length);
+    const fill = Math.max(0, targetRows - data.modules.length);
     modRows += emptyRows(['class="c-num"', "", 'class="c-ects"', 'class="c-mid"', 'class="c-note"', 'class="c-bar"'], fill)
       .replace(/<td class="c-num"><\/td>/g, (() => { let n = data.modules.length; return () => `<td class="c-num">${++n}</td>`; })());
   } else {
-    modRows = emptyRows(['class="c-num"', "", 'class="c-ects"', 'class="c-mid"', 'class="c-note"', 'class="c-bar"'], 12)
+    modRows = emptyRows(['class="c-num"', "", 'class="c-ects"', 'class="c-mid"', 'class="c-note"', 'class="c-bar"'], targetRows)
       .replace(/<td class="c-num"><\/td>/g, (() => { let n = 0; return () => `<td class="c-num">${++n}</td>`; })());
   }
 
@@ -103,6 +104,8 @@ export function monatskalender(data, opts = {}) {
   const events = data ? data.events : [];
   const weeks = hasDate ? monthMatrix(opts.year, opts.month, events) : null;
   const today = data ? data.today : null;
+  const showKw = opts.kw !== false;     // KW-Spalte standardmäßig an
+  const showTodo = !!opts.todo;         // Mini-To-do-Spalte optional
 
   const head = `
   <div class="sheet-head">
@@ -118,41 +121,66 @@ export function monatskalender(data, opts = {}) {
     </div>
   </div>`;
 
+  const kwTh = showKw ? `<th class="c-kw">KW</th>` : "";
+  const todoTh = showTodo ? `<th class="c-todo">Diesen Monat erledigen</th>` : "";
+
   let rows;
   if (weeks) {
-    rows = weeks.map((wk) => "<tr>" + wk.map((c, i) => {
-      const we = i >= 5 ? " we" : "";
-      if (!c) return `<td class="empty${we}"></td>`;
-      const t = c.iso === today ? " today" : "";
-      const evs = c.events.slice(0, 3).map((e) => `<div class="ev ${e.type}">${esc(e.label)}</div>`).join("");
-      const more = c.events.length > 3 ? `<div class="hint">+${c.events.length - 3} mehr</div>` : "";
-      return `<td class="${we}${t}"><span class="dn">${c.day}</span>${evs}${more}</td>`;
-    }).join("") + "</tr>").join("");
+    rows = weeks.map((wk, wi) => {
+      const kwTd = showKw ? `<td class="c-kw kw">${wk.kw ?? ""}</td>` : "";
+      // To-do-Spalte nur in der ersten Zeile öffnen und über alle Wochen spannen.
+      const todoTd = (showTodo && wi === 0)
+        ? `<td class="c-todo todo" rowspan="${weeks.length}"><div class="todo-lines">${Array.from({ length: 10 }, () => '<div class="tln">' + box(false) + "</div>").join("")}</div></td>`
+        : "";
+      const dayTds = wk.days.map((c, i) => {
+        const we = i >= 5 ? " we" : "";
+        if (!c) return `<td class="empty${we}"></td>`;
+        const t = c.iso === today ? " today" : "";
+        const evs = c.events.slice(0, 3).map((e) => `<div class="ev ${e.type}">${esc(e.label)}</div>`).join("");
+        const more = c.events.length > 3 ? `<div class="hint">+${c.events.length - 3} mehr</div>` : "";
+        return `<td class="${we}${t}"><span class="dn">${c.day}</span>${evs}${more}</td>`;
+      }).join("");
+      return `<tr>${kwTd}${dayTds}${todoTd}</tr>`;
+    }).join("");
   } else {
     let r = "";
     for (let w = 0; w < 6; w++) {
-      r += "<tr>";
+      const kwTd = showKw ? `<td class="c-kw kw"></td>` : "";
+      const todoTd = (showTodo && w === 0)
+        ? `<td class="c-todo todo" rowspan="6"><div class="todo-lines">${Array.from({ length: 10 }, () => '<div class="tln">' + box(false) + "</div>").join("")}</div></td>`
+        : "";
+      r += `<tr>${kwTd}`;
       for (let i = 0; i < 7; i++) r += `<td class="${i >= 5 ? "we" : ""}"><span class="dn"></span></td>`;
-      r += "</tr>";
+      r += `${todoTd}</tr>`;
     }
     rows = r;
   }
 
   const body = sheet(`${head}
-  <table class="cal grow"><thead><tr><th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th></tr></thead><tbody>${rows}</tbody></table>`);
+  <table class="cal grow"><thead><tr>${kwTh}<th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th>${todoTh}</tr></thead><tbody>${rows}</tbody></table>`);
   return { title: "Monatskalender", format: "landscape", body };
 }
 
 /* ============================================================
    03 — Wochenplan (A5 quer), Stundenraster. Füllt die Seite.
    ============================================================ */
-export function wochenplan() {
+export function wochenplan(opts = {}) {
   const days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-  let rows = "";
-  for (let h = 8; h <= 20; h++) {
-    rows += `<tr><td class="time">${String(h).padStart(2, "0")}:00</td>` +
-      days.map((_, i) => `<td class="${i >= 5 ? "we" : ""}"></td>`).join("") + "</tr>";
+  // Zeitraster: von–bis (Stunden), Schrittweite in Minuten.
+  const von = Math.max(0, Math.min(23, opts.von ?? 8));
+  const bis = Math.max(von + 1, Math.min(24, opts.bis ?? 20));
+  const step = [15, 20, 30, 45, 60, 90, 120].includes(opts.raster) ? opts.raster : 60;
+
+  const slots = [];
+  for (let min = von * 60; min < bis * 60; min += step) {
+    const h = Math.floor(min / 60), m = min % 60;
+    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   }
+  const rows = slots.map((label) =>
+    `<tr><td class="time">${label}</td>` +
+    days.map((_, i) => `<td class="${i >= 5 ? "we" : ""}"></td>`).join("") + "</tr>"
+  ).join("");
+
   const body = sheet(`
   <div class="sheet-head">
     <div class="title"><small>🎓 Studien-Tracker · 📅 Wochenplan</small>Woche ${line(34)}</div>
@@ -161,6 +189,35 @@ export function wochenplan() {
   <table class="cal week grow"><thead><tr><th class="time">Zeit</th>${days.map((d) => `<th>${d}</th>`).join("")}</tr></thead>
   <tbody>${rows}</tbody></table>`);
   return { title: "Wochenplan", format: "landscape", body };
+}
+
+/* ============================================================
+   Deckblatt fürs Heft (A5 hoch).
+   opts: { name, studiengang, semester }
+   ============================================================ */
+export function deckblatt(opts = {}) {
+  const field = (label, val) => `<div class="cover-field"><div class="cover-label">${label}</div><div class="cover-val">${val ? esc(val) : ""}</div></div>`;
+  const body = sheet(`
+  <div class="cover">
+    <div class="cover-top"><small>🎓 Studien-Tracker</small><h1>Semester-Heft</h1></div>
+    <div class="cover-fields">
+      ${field("Name", opts.name)}
+      ${field("Studiengang", opts.studiengang)}
+      ${field("Semester", opts.semester)}
+      ${field("Zeitraum", opts.zeitraum)}
+    </div>
+    <div class="cover-foot">Semesterübersicht · Monatskalender · Wochenplan · Modul-Detailblätter</div>
+  </div>
+  <style>
+    .cover { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 14mm; padding: 6mm 2mm; }
+    .cover-top small { display:block; font-size:9pt; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent); }
+    .cover-top h1 { font-size:30pt; font-weight:800; letter-spacing:-0.02em; border-bottom:3px solid var(--accent); padding-bottom:6px; }
+    .cover-fields { display:flex; flex-direction:column; gap:9mm; }
+    .cover-field .cover-label { font-size:7.5pt; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); }
+    .cover-field .cover-val { min-height:7mm; border-bottom:1px solid var(--border-strong); font-weight:600; font-size:12pt; }
+    .cover-foot { font-size:8pt; color:var(--muted); text-align:center; margin-top:auto; }
+  </style>`);
+  return { title: "Semester-Heft", format: "portrait", body };
 }
 
 /* ============================================================

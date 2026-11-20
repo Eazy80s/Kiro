@@ -224,6 +224,17 @@ html.toner-save .cal .ev { background: #fff !important; color: #000 !important; 
   text-align: center; vertical-align: middle; font-size: 7.4pt;
 }
 
+/* Kalender: KW-Spalte */
+.cal .c-kw { width: 9mm; }
+.cal td.kw { background: var(--stripe); text-align: center; vertical-align: middle; font-size: 7pt; font-weight: 700; color: var(--muted); }
+
+/* Kalender: Mini-To-do-Spalte am rechten Rand */
+.cal .c-todo { width: 34mm; }
+.cal td.todo { vertical-align: top; padding: 3px 4px; }
+.cal .todo-lines { display: flex; flex-direction: column; height: 100%; gap: 0; }
+.cal .todo-lines .tln { flex: 1 1 auto; border-bottom: 1px solid var(--border); display: flex; align-items: center; min-height: 7mm; }
+.cal .todo-lines .tln:last-child { border-bottom: none; }
+
 /* Seitenumbruch (Heft) */
 .page-break { break-after: page; page-break-after: always; }
 

@@ -30,13 +30,49 @@ Fertige PDFs liegen in [`pdf/`](pdf/). Zum Drucken öffnen (im Druckdialog
 node generate.mjs --paper a4            # in A4 statt A5
 node generate.mjs --toner-save          # tintensparend (Graustufen)
 node generate.mjs --data backup.json    # mit deinen echten Daten füllen
-node generate.mjs --month 3 --year 2026 # datierter Kalender (echte Tageszahlen)
-node generate.mjs --booklet             # alle vier in EIN Heft-PDF
-node generate.mjs --batch-year 2026     # 12 Monatskalender auf einmal
 node generate.mjs --fillable            # ausfüllbare HTML-Formulare (am PC tippen)
 node generate.mjs --only kalender       # nur ein bestimmtes Blatt
 node generate.mjs --html-only           # nur HTML, kein PDF
 ```
+
+### Kalender
+
+```bash
+node generate.mjs --month 3 --year 2026  # datierter März-Kalender
+node generate.mjs --monat aktuell        # laufender + nächster Monat datiert
+node generate.mjs --todo                 # Mini-To-do-Spalte „Diesen Monat erledigen“
+node generate.mjs --no-kw                # ohne Kalenderwochen-Spalte (standardmäßig an)
+node generate.mjs --batch-year 2026      # 12 Monatskalender auf einmal
+```
+
+Die **KW-Spalte** (Kalenderwochen, ISO) ist standardmäßig links eingeblendet.
+
+### Wochenplan-Zeitraster
+
+```bash
+node generate.mjs --von 7 --bis 22       # 07–22 Uhr statt 08–20
+node generate.mjs --raster 30            # 30-Minuten-Takt (15/20/30/45/60/90/120)
+node generate.mjs --von 8 --bis 20 --raster 90   # 90-Minuten-Blöcke
+```
+
+### Semesterübersicht
+
+```bash
+node generate.mjs --zeilen 16            # 16 Modulzeilen (Standard 12)
+```
+
+### Hefte
+
+```bash
+node generate.mjs --booklet              # alle Blätter in EIN Heft-PDF
+node generate.mjs --booklet --deckblatt --name "…" --studiengang "…"   # Heft mit Deckblatt
+node generate.mjs --modulheft --data b.json   # alle Modul-Detailblätter in EIN PDF
+node generate.mjs --falt                 # Faltheft: 2×A5 auf A4-quer (Broschüre)
+```
+
+Das **Deckblatt** trägt Name, Studiengang, Semester und Zeitraum (Semester wird
+aus `--data` übernommen, falls vorhanden). Das **Faltheft** legt je zwei A5-Seiten
+nebeneinander auf ein A4-Querblatt mit Falz-/Schnittlinien — zum Falten und Heften.
 
 ### Mit echten Daten (`--data`)
 

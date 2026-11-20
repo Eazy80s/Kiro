@@ -180,7 +180,21 @@ export function parseExport(raw) {
   };
 }
 
-/* ---- Kalender: Wochen eines Monats (Montag-first), mit Events ---- */
+/* ---- ISO-Kalenderwoche (Montag-first) eines YYYY-MM-DD ---- */
+export function isoWeek(iso) {
+  const d = new Date(iso + "T00:00:00");
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // Donnerstag der laufenden ISO-Woche bestimmt das Jahr und die Woche.
+  const day = (t.getUTCDay() + 6) % 7; // 0 = Montag
+  t.setUTCDate(t.getUTCDate() - day + 3);
+  const firstThursday = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const firstDay = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDay + 3);
+  return 1 + Math.round((t - firstThursday) / (7 * 86400000));
+}
+
+/* ---- Kalender: Wochen eines Monats (Montag-first), mit Events ----
+   Rückgabe: [{ kw, days: [cell|null × 7] }], cell = { day, iso, events } */
 export function monthMatrix(year, month /* 0-based */, events = []) {
   const first = new Date(year, month, 1);
   const startOffset = (first.getDay() + 6) % 7;
@@ -197,6 +211,10 @@ export function monthMatrix(year, month /* 0-based */, events = []) {
   }
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  for (let i = 0; i < cells.length; i += 7) {
+    const days = cells.slice(i, i + 7);
+    const firstCell = days.find((c) => c);
+    weeks.push({ kw: firstCell ? isoWeek(firstCell.iso) : null, days });
+  }
   return weeks;
 }

@@ -64,11 +64,13 @@ ${fillable ? `<script>${FILLABLE_JS}</script>` : ""}
 }
 
 // Mehrere Fragmente zu einem Heft (ein Dokument, Seitenumbrüche)
-export function bookletHtml(fragments, { paper = "a5", tonerSave = false, inlineCss } = {}) {
+export function bookletHtml(fragments, { paper = "a5", tonerSave = false, inlineCss, falt = false } = {}) {
   const cls = tonerSave ? "toner-save" : "";
-  // Jede Seite in einen Wrapper mit passender @page-Größe.
-  // Da @page global ist, nutzen wir einheitliche Ausrichtung je Heft nicht —
-  // stattdessen named pages pro Ausrichtung.
+
+  // --- Falt-Heft: 2×A5 nebeneinander auf A4-quer (zum Falten/Broschüre) ---
+  if (falt) return faltHtml(fragments, { tonerSave, inlineCss });
+
+  // Jede Seite in einen Wrapper mit passender @page-Größe (named pages pro Ausrichtung).
   const pages = fragments.map((f, i) => {
     const orient = f.format === "landscape" ? "landscape" : "portrait";
     const last = i === fragments.length - 1;
@@ -79,8 +81,7 @@ export function bookletHtml(fragments, { paper = "a5", tonerSave = false, inline
     @page landscape-page { size: ${paper.toUpperCase()} landscape; margin: 7mm 8mm; }
     .page-portrait { page: portrait-page; }
     .page-landscape { page: landscape-page; }
-    /* Im Heft darf .sheet nicht per 100vh überlaufen (sonst Extra-Seiten).
-       Jede Blattsektion ist genau eine Seite; .sheet füllt sie per height:100%. */
+    /* Im Heft darf .sheet nicht per 100vh überlaufen (sonst Extra-Seiten). */
     html, body { height: auto; }
     .booklet-page { display: block; }
     .booklet-page > .sheet { min-height: 0; height: auto; }
@@ -95,6 +96,56 @@ export function bookletHtml(fragments, { paper = "a5", tonerSave = false, inline
 </head>
 <body>
 ${pages}
+</body>
+</html>`;
+}
+
+/* Falt-Heft: je zwei A5-Blätter nebeneinander auf einem A4-Querblatt.
+   Gemischte Ausrichtungen werden auf A5-Hochformat normiert (Querblätter
+   werden in eine A5-Hochzelle skaliert), damit das 2-up-Raster passt. */
+function faltHtml(fragments, { tonerSave = false, inlineCss } = {}) {
+  const cls = tonerSave ? "toner-save" : "";
+  // Zellen: jede Seite in eine A5-Hochzelle; Querblätter werden skaliert gedreht.
+  const cells = fragments.map((f) => {
+    const land = f.format === "landscape";
+    // Querblätter als skalierte, gedrehte A5-Landscape-Fläche in die Hochzelle legen.
+    const inner = land
+      ? `<div class="rot"><div class="rot-inner fmt-a5-landscape">${f.body}</div></div>`
+      : f.body;
+    return `<div class="cell${land ? " cell-land" : ""}">${inner}</div>`;
+  });
+  // In Paare gruppieren (2 Zellen je A4-Querseite).
+  let sheetsHtml = "";
+  for (let i = 0; i < cells.length; i += 2) {
+    const pair = cells.slice(i, i + 2);
+    while (pair.length < 2) pair.push('<div class="cell"></div>');
+    const last = i + 2 >= cells.length;
+    sheetsHtml += `<section class="falt-sheet${last ? "" : " page-break"}">${pair.join("")}</section>`;
+  }
+  const faltCss = `
+    @page { size: A4 landscape; margin: 6mm; }
+    html, body { height: auto; }
+    .falt-sheet { display: flex; gap: 6mm; height: 192mm; }
+    .falt-sheet .cell {
+      flex: 1 1 50%; width: 50%; border: 1px dashed var(--border);
+      padding: 4mm; overflow: hidden; position: relative;
+    }
+    .falt-sheet .cell > .sheet { min-height: 100%; height: 100%; }
+    /* Querblatt in A5-Hochzelle: 90° drehen und einpassen */
+    .rot { position: absolute; inset: 4mm; }
+    .rot-inner { width: 192mm; height: 128mm; transform: rotate(90deg) translateY(-128mm); transform-origin: top left; }
+    .rot-inner > .sheet { min-height: 128mm; height: 128mm; }
+    .page-break { break-after: page; page-break-after: always; }`;
+  return `<!doctype html>
+<html lang="de" class="fmt-a5-portrait ${cls}">
+<head>
+<meta charset="utf-8">
+<title>Studien-Tracker — Faltheft</title>
+<style>${inlineCss}</style>
+<style>${faltCss}</style>
+</head>
+<body>
+${sheetsHtml}
 </body>
 </html>`;
 }

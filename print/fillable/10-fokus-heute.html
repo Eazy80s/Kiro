@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="de" class="fmt-a5-portrait fillable">
+<head>
+<meta charset="utf-8">
+<title>Fokus heute</title>
+<style>/* ============================================================
+   Studien-Tracker — Druckvorlagen (analoge Version)
+   Gemeinsames Stylesheet für alle Blätter zum Ausdrucken.
+   Standardformat: A5. Farben & Look angelehnt an die App (styles.css).
+
+   Format wird über eine Klasse auf <html> gesteuert:
+     .fmt-a5-portrait  (Standard)   .fmt-a5-landscape
+     .fmt-a4-portrait               .fmt-a4-landscape
+   Toner-sparend über .toner-save auf <html>.
+   ============================================================ */
+
+:root {
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #4f46e5;
+  --accent-2: #16a34a;
+  --danger: #dc2626;
+  --surface-2: #f1f3f5;
+  --border: #cbd0d6;
+  --border-strong: #9aa1ab;
+  --grid: #d7dbe0;
+  --stripe: #fafbfc;
+
+  /* Event-Typ-Farben (aus der App) */
+  --exam: #dc2626;
+  --deadline: #4f46e5;
+  --lecture: #16a34a;
+  --other: #6b7280;
+}
+
+/* Toner-sparend: keine farbigen Flächen, nur Graustufen & Linien */
+html.toner-save {
+  --accent: #333333;
+  --accent-2: #333333;
+  --surface-2: #ffffff;
+  --stripe: #ffffff;
+  --exam: #000000;
+  --deadline: #000000;
+  --lecture: #000000;
+  --other: #000000;
+}
+html.toner-save thead th { background: #fff; }
+html.toner-save .countdown, html.toner-save .hero { background: #fff !important; color: var(--text) !important; }
+
+/* ---- Seitengröße je Format ---- */
+html.fmt-a5-portrait  @page { size: A5 portrait; }
+html.fmt-a5-landscape @page { size: A5 landscape; }
+html.fmt-a4-portrait  @page { size: A4 portrait; }
+html.fmt-a4-landscape @page { size: A4 landscape; }
+
+@page {
+  size: A5 portrait;        /* Standard */
+  margin: 10mm 9mm 9mm 9mm;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  color: var(--text);
+  line-height: 1.38;
+  font-size: 9pt;            /* A5-Grundgröße */
+  background: #fff;
+}
+/* A4 verträgt etwas mehr */
+html.fmt-a4-portrait body, html.fmt-a4-landscape body { font-size: 10.5pt; line-height: 1.42; }
+
+/* ---- Seitenkopf ---- */
+.sheet-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  border-bottom: 2.2px solid var(--accent);
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+.sheet-head .title {
+  font-size: 15pt;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+html.fmt-a4-portrait .sheet-head .title, html.fmt-a4-landscape .sheet-head .title { font-size: 20pt; }
+.sheet-head .title small {
+  display: block;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.sheet-head .meta {
+  text-align: right;
+  font-size: 8pt;
+  color: var(--muted);
+}
+.sheet-head .meta .line {
+  display: inline-block;
+  min-width: 34mm;
+  border-bottom: 1px solid var(--border-strong);
+  margin-left: 6px;
+}
+
+/* ---- Abschnittsüberschrift ---- */
+.section-label {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 11px 0 5px;
+}
+
+/* ---- Tabellen ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  border: 1px solid var(--grid);
+  padding: 4px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+thead th {
+  background: var(--surface-2);
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Schreibzeilen hoch genug zum Eintragen */
+tbody td { height: 8mm; }
+html.fmt-a4-portrait tbody td, html.fmt-a4-landscape tbody td { height: 9.5mm; }
+tbody tr:nth-child(even) td { background: var(--stripe); }
+/* mit echten Daten: nicht streifen, kompakter */
+table.data tbody td { height: auto; }
+table.data tbody tr:nth-child(even) td { background: var(--stripe); }
+
+/* schmale Spalten */
+.c-num { width: 8mm; text-align: center; }
+.c-mid { width: 20mm; }
+.c-date { width: 22mm; }
+.c-ects { width: 13mm; text-align: center; }
+.c-note { width: 15mm; text-align: center; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ctr { text-align: center; }
+
+/* ---- Kästchen zum Ankreuzen ---- */
+.box {
+  display: inline-block;
+  width: 3.6mm; height: 3.6mm;
+  border: 1.3px solid var(--border-strong);
+  border-radius: 2px;
+  vertical-align: -0.6mm;
+}
+.box.checked { background: var(--accent); border-color: var(--accent); position: relative; }
+.box.checked::after {
+  content: ""; position: absolute; left: 1mm; top: 0.3mm;
+  width: 1.1mm; height: 2mm; border: solid #fff; border-width: 0 0.6mm 0.6mm 0;
+  transform: rotate(45deg);
+}
+html.toner-save .box.checked { background: #fff; }
+html.toner-save .box.checked::after { border-color: #000; }
+.circle {
+  display: inline-block;
+  width: 4mm; height: 4mm;
+  border: 1.3px solid var(--border-strong);
+  border-radius: 50%;
+  vertical-align: -0.6mm;
+}
+
+/* ---- leere Schreiblinien ---- */
+.lines { margin-top: 3px; }
+.lines .ln { border-bottom: 1px solid var(--border); height: 7.5mm; }
+
+/* ---- Fortschrittsbalken (echte Daten) ---- */
+.bar { height: 4.4mm; border: 1px solid var(--border-strong); border-radius: 3px; overflow: hidden; background: #fff; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
+html.toner-save .bar > span { background: #bbb; }
+.bar-boxes { display: flex; gap: 2px; }
+.bar-boxes > i { flex: 1; height: 5mm; border: 1px solid var(--grid); }
+.bar-boxes > i.on { background: var(--accent); border-color: var(--accent); }
+html.toner-save .bar-boxes > i.on { background: #bbb; }
+
+/* ---- Hero/Countdown (Dashboard) ---- */
+.hero {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff; border-radius: 8px; padding: 10px 12px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.hero .big { font-size: 22pt; font-weight: 800; line-height: 1; }
+.hero .cd-info { text-align: right; }
+
+/* ---- Hinweiszeile / Fußnote ---- */
+.hint { font-size: 7pt; color: var(--muted); margin-top: 3px; }
+.footer {
+  margin-top: 10px;
+  display: flex; justify-content: space-between;
+  font-size: 6.5pt; color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 3px;
+}
+
+/* ---- kleine Helfer ---- */
+.row { display: flex; gap: 8px; }
+.col { flex: 1; }
+.pill {
+  display: inline-block; font-size: 7pt; padding: 0 6px;
+  border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted);
+}
+.pill.done { border-color: var(--accent-2); color: var(--accent-2); }
+.legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 7.5pt; color: var(--muted); margin-top: 5px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.dot { display: inline-block; width: 3mm; height: 3mm; border-radius: 50%; vertical-align: -0.3mm; }
+.dot.exam { background: var(--exam); }
+.dot.deadline { background: var(--deadline); }
+.dot.lecture { background: var(--lecture); }
+.dot.other { background: var(--other); }
+html.toner-save .dot { border: 1px solid #000; }
+
+.grade-scale { display: flex; gap: 0; margin-top: 3px; font-size: 7pt; color: var(--muted); }
+.grade-scale div { flex: 1; border: 1px solid var(--grid); text-align: center; padding: 2px 0; }
+
+/* ---- Kalendergitter ---- */
+.cal { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cal th { background: var(--surface-2); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding: 3px; }
+.cal td { border: 1px solid var(--grid); height: 20mm; vertical-align: top; padding: 2px 3px; }
+html.fmt-a4-portrait .cal td, html.fmt-a4-landscape .cal td { height: 26mm; }
+.cal td .dn { font-size: 8pt; font-weight: 700; color: var(--muted); }
+.cal td.we { background: var(--stripe); }
+.cal td.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal .ev { font-size: 6.5pt; line-height: 1.25; border-radius: 2px; padding: 0 2px; margin-top: 1px; color: #fff; overflow: hidden; }
+.cal .ev.exam { background: var(--exam); }
+.cal .ev.deadline { background: var(--deadline); }
+.cal .ev.lecture { background: var(--lecture); }
+.cal .ev.other { background: var(--other); }
+.cal .ev.task { background: #fff; color: var(--text); border: 1px solid var(--border); }
+html.toner-save .cal .ev { background: #fff !important; color: #000 !important; border: 1px solid #000; }
+
+/* Seitenumbruch im Heft */
+.page-break { break-after: page; page-break-after: always; }
+
+@media print {
+  .no-print { display: none !important; }
+}
+</style>
+<style>@page { size: A5 portrait; }
+  @media screen {
+    html.fillable [contenteditable] { outline: 1px dashed #c3c8d0; border-radius: 2px; min-height: 1em; cursor: text; }
+    html.fillable [contenteditable]:focus { outline: 1.5px solid var(--accent); background: #f6f7ff; }
+    html.fillable tbody td[contenteditable] { background: #fcfcfe; }
+    html.fillable .fill-hint { position: fixed; top: 0; left: 0; right: 0; background: var(--accent); color: #fff; font-size: 11px; padding: 4px 8px; z-index: 99; text-align: center; }
+    html.fillable body { padding-top: 24px; }
+  }
+  @media print { html.fillable [contenteditable] { outline: none !important; background: none !important; } html.fillable .fill-hint { display: none; } }
+</style>
+</head>
+<body>
+
+  <div class="sheet-head">
+    <div class="title"><small>🎓 Studien-Tracker · 🎯 Fokus</small>Fokus heute</div>
+    <div class="meta"><div>Datum <span class="line" style="min-width:34mm"></span></div></div>
+  </div>
+  <div class="section-label">Die 3 wichtigsten Aufgaben</div>
+  <table><tbody><tr><td class="ctr"><span class="box big"></span></td><td style="font-size:11pt">1. </td></tr><tr><td class="ctr"><span class="box big"></span></td><td style="font-size:11pt">2. </td></tr><tr><td class="ctr"><span class="box big"></span></td><td style="font-size:11pt">3. </td></tr></tbody></table>
+  <div class="row" style="margin-top:8px">
+    <div class="col">
+      <div class="section-label">Weitere Aufgaben</div>
+      <table><thead><tr><th style="width:8mm">✓</th><th>Aufgabe</th><th class="c-mid">Modul</th></tr></thead><tbody><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr><tr><tdclass="ctr"></td><td></td><tdclass="c-mid"></td></tr></tbody></table>
+    </div>
+    <div class="col" style="flex:0 0 46mm">
+      <div class="section-label">Pomodoros heute</div>
+      <div style="border:1px solid var(--grid);padding:5px;min-height:20mm"><div style="font-size:11pt;letter-spacing:1.6mm"><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span></div><div style="font-size:11pt;letter-spacing:1.6mm;margin-top:3mm"><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span></div></div>
+      <div class="section-label">Prüfungs-Countdown</div>
+      <table><tr><td class="c-mid">Nächste</td><td></td></tr><tr><td>Noch Tage</td><td></td></tr></table>
+    </div>
+  </div>
+  <div class="section-label">Notizen</div>
+  <div class="lines"><div class="ln"></div><div class="ln"></div></div>
+  <style>.box.big{width:5mm;height:5mm}</style>
+  <div class="footer"><span>Studien-Tracker · Fokus heute</span><span>Ein Blatt pro Tag</span></div>
+<script>
+  (function () {
+    // Leere Zellen, Schreiblinien und Meta-Linien beschreibbar machen.
+    document.querySelectorAll('tbody td').forEach(function (td) {
+      if (!td.children.length && !td.textContent.trim()) td.setAttribute('contenteditable', 'true');
+    });
+    document.querySelectorAll('.lines .ln').forEach(function (el) { el.setAttribute('contenteditable', 'true'); });
+    document.querySelectorAll('.line').forEach(function (el) {
+      var s = document.createElement('span');
+      s.setAttribute('contenteditable', 'true');
+      s.style.cssText = 'display:inline-block;min-width:' + (el.style.minWidth || '34mm') + ';border-bottom:1px solid #9aa1ab';
+      el.replaceWith(s);
+    });
+    var hint = document.createElement('div');
+    hint.className = 'fill-hint no-print';
+    hint.textContent = 'Ausfüllbar: Felder anklicken und tippen. Danach drucken oder \u201eAls PDF speichern\u201c (Strg/Cmd+P).';
+    document.body.insertBefore(hint, document.body.firstChild);
+  })();
+</script>
+</body>
+</html>

@@ -1,7 +1,12 @@
 /* ============================================================
    Studien-Tracker — Druckvorlagen (analoge Version)
-   Gemeinsames Stylesheet für alle A4-Blätter zum Ausdrucken.
-   Farben & Look angelehnt an die App (styles.css).
+   Gemeinsames Stylesheet für alle Blätter zum Ausdrucken.
+   Standardformat: A5. Farben & Look angelehnt an die App (styles.css).
+
+   Format wird über eine Klasse auf <html> gesteuert:
+     .fmt-a5-portrait  (Standard)   .fmt-a5-landscape
+     .fmt-a4-portrait               .fmt-a4-landscape
+   Toner-sparend über .toner-save auf <html>.
    ============================================================ */
 
 :root {
@@ -14,14 +19,38 @@
   --border: #cbd0d6;
   --border-strong: #9aa1ab;
   --grid: #d7dbe0;
+  --stripe: #fafbfc;
+
+  /* Event-Typ-Farben (aus der App) */
+  --exam: #dc2626;
+  --deadline: #4f46e5;
+  --lecture: #16a34a;
+  --other: #6b7280;
 }
 
-@page {
-  size: A4 portrait;
-  margin: 14mm 13mm 12mm 13mm;
+/* Toner-sparend: keine farbigen Flächen, nur Graustufen & Linien */
+html.toner-save {
+  --accent: #333333;
+  --accent-2: #333333;
+  --surface-2: #ffffff;
+  --stripe: #ffffff;
+  --exam: #000000;
+  --deadline: #000000;
+  --lecture: #000000;
+  --other: #000000;
 }
-@page landscape {
-  size: A4 landscape;
+html.toner-save thead th { background: #fff; }
+html.toner-save .countdown, html.toner-save .hero { background: #fff !important; color: var(--text) !important; }
+
+/* ---- Seitengröße je Format ---- */
+html.fmt-a5-portrait  @page { size: A5 portrait; }
+html.fmt-a5-landscape @page { size: A5 landscape; }
+html.fmt-a4-portrait  @page { size: A4 portrait; }
+html.fmt-a4-landscape @page { size: A4 landscape; }
+
+@page {
+  size: A5 portrait;        /* Standard */
+  margin: 10mm 9mm 9mm 9mm;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,30 +58,33 @@
 html, body {
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   color: var(--text);
-  line-height: 1.4;
-  font-size: 11pt;
+  line-height: 1.38;
+  font-size: 9pt;            /* A5-Grundgröße */
   background: #fff;
 }
+/* A4 verträgt etwas mehr */
+html.fmt-a4-portrait body, html.fmt-a4-landscape body { font-size: 10.5pt; line-height: 1.42; }
 
 /* ---- Seitenkopf ---- */
 .sheet-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  border-bottom: 2.5px solid var(--accent);
-  padding-bottom: 6px;
-  margin-bottom: 12px;
+  border-bottom: 2.2px solid var(--accent);
+  padding-bottom: 5px;
+  margin-bottom: 10px;
 }
 .sheet-head .title {
-  font-size: 20pt;
+  font-size: 15pt;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.05;
 }
+html.fmt-a4-portrait .sheet-head .title, html.fmt-a4-landscape .sheet-head .title { font-size: 20pt; }
 .sheet-head .title small {
   display: block;
-  font-size: 9pt;
-  font-weight: 600;
+  font-size: 7.5pt;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
@@ -60,112 +92,153 @@ html, body {
 }
 .sheet-head .meta {
   text-align: right;
-  font-size: 9pt;
+  font-size: 8pt;
   color: var(--muted);
 }
 .sheet-head .meta .line {
   display: inline-block;
-  min-width: 46mm;
+  min-width: 34mm;
   border-bottom: 1px solid var(--border-strong);
   margin-left: 6px;
 }
 
 /* ---- Abschnittsüberschrift ---- */
 .section-label {
-  font-size: 8.5pt;
+  font-size: 7.5pt;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
-  margin: 14px 0 6px;
+  margin: 11px 0 5px;
 }
 
 /* ---- Tabellen ---- */
 table { width: 100%; border-collapse: collapse; }
 th, td {
   border: 1px solid var(--grid);
-  padding: 6px 7px;
+  padding: 4px 5px;
   text-align: left;
   vertical-align: top;
 }
 thead th {
   background: var(--surface-2);
-  font-size: 8.5pt;
+  font-size: 7.5pt;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--muted);
 }
-/* Schreibzeilen in Tabellen hoch genug zum Eintragen */
-tbody td { height: 9.5mm; }
-tbody tr:nth-child(even) td { background: #fafbfc; }
+/* Schreibzeilen hoch genug zum Eintragen */
+tbody td { height: 8mm; }
+html.fmt-a4-portrait tbody td, html.fmt-a4-landscape tbody td { height: 9.5mm; }
+tbody tr:nth-child(even) td { background: var(--stripe); }
+/* mit echten Daten: nicht streifen, kompakter */
+table.data tbody td { height: auto; }
+table.data tbody tr:nth-child(even) td { background: var(--stripe); }
 
 /* schmale Spalten */
-.c-num { width: 10mm; text-align: center; }
-.c-mid { width: 24mm; }
-.c-date { width: 26mm; }
-.c-ects { width: 16mm; text-align: center; }
-.c-note { width: 18mm; text-align: center; }
+.c-num { width: 8mm; text-align: center; }
+.c-mid { width: 20mm; }
+.c-date { width: 22mm; }
+.c-ects { width: 13mm; text-align: center; }
+.c-note { width: 15mm; text-align: center; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ctr { text-align: center; }
 
 /* ---- Kästchen zum Ankreuzen ---- */
 .box {
   display: inline-block;
-  width: 4.2mm; height: 4.2mm;
-  border: 1.4px solid var(--border-strong);
+  width: 3.6mm; height: 3.6mm;
+  border: 1.3px solid var(--border-strong);
   border-radius: 2px;
-  vertical-align: -0.8mm;
+  vertical-align: -0.6mm;
 }
+.box.checked { background: var(--accent); border-color: var(--accent); position: relative; }
+.box.checked::after {
+  content: ""; position: absolute; left: 1mm; top: 0.3mm;
+  width: 1.1mm; height: 2mm; border: solid #fff; border-width: 0 0.6mm 0.6mm 0;
+  transform: rotate(45deg);
+}
+html.toner-save .box.checked { background: #fff; }
+html.toner-save .box.checked::after { border-color: #000; }
 .circle {
   display: inline-block;
-  width: 4.6mm; height: 4.6mm;
-  border: 1.4px solid var(--border-strong);
+  width: 4mm; height: 4mm;
+  border: 1.3px solid var(--border-strong);
   border-radius: 50%;
-  vertical-align: -0.8mm;
+  vertical-align: -0.6mm;
 }
 
 /* ---- leere Schreiblinien ---- */
-.lines { margin-top: 4px; }
-.lines .ln {
-  border-bottom: 1px solid var(--border);
-  height: 8.5mm;
+.lines { margin-top: 3px; }
+.lines .ln { border-bottom: 1px solid var(--border); height: 7.5mm; }
+
+/* ---- Fortschrittsbalken (echte Daten) ---- */
+.bar { height: 4.4mm; border: 1px solid var(--border-strong); border-radius: 3px; overflow: hidden; background: #fff; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
+html.toner-save .bar > span { background: #bbb; }
+.bar-boxes { display: flex; gap: 2px; }
+.bar-boxes > i { flex: 1; height: 5mm; border: 1px solid var(--grid); }
+.bar-boxes > i.on { background: var(--accent); border-color: var(--accent); }
+html.toner-save .bar-boxes > i.on { background: #bbb; }
+
+/* ---- Hero/Countdown (Dashboard) ---- */
+.hero {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff; border-radius: 8px; padding: 10px 12px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
 }
+.hero .big { font-size: 22pt; font-weight: 800; line-height: 1; }
+.hero .cd-info { text-align: right; }
 
 /* ---- Hinweiszeile / Fußnote ---- */
-.hint { font-size: 8pt; color: var(--muted); margin-top: 4px; }
+.hint { font-size: 7pt; color: var(--muted); margin-top: 3px; }
 .footer {
-  position: fixed;
-  bottom: 4mm; left: 13mm; right: 13mm;
+  margin-top: 10px;
   display: flex; justify-content: space-between;
-  font-size: 7.5pt; color: var(--muted);
+  font-size: 6.5pt; color: var(--muted);
   border-top: 1px solid var(--border);
   padding-top: 3px;
 }
 
 /* ---- kleine Helfer ---- */
-.row { display: flex; gap: 10px; }
+.row { display: flex; gap: 8px; }
 .col { flex: 1; }
 .pill {
-  display: inline-block;
-  font-size: 8pt;
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  color: var(--muted);
+  display: inline-block; font-size: 7pt; padding: 0 6px;
+  border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted);
 }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 8.5pt; color: var(--muted); margin-top: 6px; }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pill.done { border-color: var(--accent-2); color: var(--accent-2); }
+.legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 7.5pt; color: var(--muted); margin-top: 5px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.dot { display: inline-block; width: 3mm; height: 3mm; border-radius: 50%; vertical-align: -0.3mm; }
+.dot.exam { background: var(--exam); }
+.dot.deadline { background: var(--deadline); }
+.dot.lecture { background: var(--lecture); }
+.dot.other { background: var(--other); }
+html.toner-save .dot { border: 1px solid #000; }
 
-.grade-scale {
-  display: flex; gap: 0; margin-top: 4px;
-  font-size: 8pt; color: var(--muted);
-}
-.grade-scale div {
-  flex: 1; border: 1px solid var(--grid);
-  text-align: center; padding: 3px 0;
-}
+.grade-scale { display: flex; gap: 0; margin-top: 3px; font-size: 7pt; color: var(--muted); }
+.grade-scale div { flex: 1; border: 1px solid var(--grid); text-align: center; padding: 2px 0; }
 
-/* Querformat-Blätter */
-body.landscape { font-size: 10.5pt; }
+/* ---- Kalendergitter ---- */
+.cal { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cal th { background: var(--surface-2); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding: 3px; }
+.cal td { border: 1px solid var(--grid); height: 20mm; vertical-align: top; padding: 2px 3px; }
+html.fmt-a4-portrait .cal td, html.fmt-a4-landscape .cal td { height: 26mm; }
+.cal td .dn { font-size: 8pt; font-weight: 700; color: var(--muted); }
+.cal td.we { background: var(--stripe); }
+.cal td.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal .ev { font-size: 6.5pt; line-height: 1.25; border-radius: 2px; padding: 0 2px; margin-top: 1px; color: #fff; overflow: hidden; }
+.cal .ev.exam { background: var(--exam); }
+.cal .ev.deadline { background: var(--deadline); }
+.cal .ev.lecture { background: var(--lecture); }
+.cal .ev.other { background: var(--other); }
+.cal .ev.task { background: #fff; color: var(--text); border: 1px solid var(--border); }
+html.toner-save .cal .ev { background: #fff !important; color: #000 !important; border: 1px solid #000; }
+
+/* Seitenumbruch im Heft */
+.page-break { break-after: page; page-break-after: always; }
 
 @media print {
   .no-print { display: none !important; }

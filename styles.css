@@ -650,15 +650,36 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .print-view { display: none; }
 .print-view h1 { font-size: 1.4rem; margin-bottom: 4px; }
 .print-view .pv-meta { color: #555; font-size: 0.9rem; margin-bottom: 16px; }
-.print-view h2 { font-size: 1.05rem; margin: 16px 0 6px; }
+.print-view h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555; margin: 16px 0 6px; }
 .print-view .pv-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 .print-view .pv-table th, .print-view .pv-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 0.9rem; }
-.print-view .pv-table th { background: #f0f0f0; }
+.print-view .pv-table th { background: #f0f0f0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
+.print-view .pv-table td.pv-c { text-align: center; }
+
+/* Kopf im App-Look (Akzent-Unterstrich) */
+.print-view .pv-head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2.5px solid #4f46e5; padding-bottom: 6px; margin-bottom: 14px; }
+.print-view .pv-title { font-size: 1.5rem; font-weight: 800; line-height: 1.05; }
+.print-view .pv-title small { display: block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #4f46e5; margin-bottom: 2px; }
+.print-view .pv-head-meta { color: #555; font-size: 0.82rem; }
+
+/* Kennzahlen-Karten */
+.print-view .pv-cards { display: flex; gap: 8px; margin-bottom: 14px; }
+.print-view .pv-card { flex: 1; border: 1px solid #ccc; border-radius: 8px; padding: 8px 10px; text-align: center; }
+.print-view .pv-card-num { font-size: 1.3rem; font-weight: 800; color: #4f46e5; line-height: 1; }
+.print-view .pv-card-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #555; margin-top: 3px; }
+
+/* Fortschrittsbalken */
+.print-view .pv-bar { display: inline-block; width: 100%; height: 0.72rem; border: 1px solid #999; border-radius: 3px; overflow: hidden; vertical-align: middle; }
+.print-view .pv-bar > span { display: block; height: 100%; background: #4f46e5; }
 
 @media print {
   /* Nur die Druckansicht anzeigen, App-UI ausblenden */
   body > .layout, #snackbar { display: none !important; }
   .print-view { display: block !important; color: #000; padding: 0; }
+  /* Farben/Hintergründe im Druck erzwingen (Akzent, Balken, Karten) */
+  .print-view { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-view .pv-table { page-break-inside: auto; }
+  .print-view .pv-table tr { page-break-inside: avoid; }
   @page { margin: 1.5cm; }
 }
 

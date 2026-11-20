@@ -1940,32 +1940,98 @@ if (icsBtn) {
   });
 }
 
-/* ----- Druck-/PDF-Ansicht der Semesterübersicht (Punkt 9) ----- */
+/* ----- Druck-/PDF-Ansicht: Papierversion aus den Live-Daten (Punkt 9) -----
+   Erzeugt eine mehrteilige, im App-Look gestaltete Übersicht:
+   Semesterübersicht + Noten (ECTS-gewichtet, Prognose) + Fortschritt +
+   Lernzeit & Lern-Serie. Passend zu den Druckvorlagen im Ordner print/. */
+function moduleStatusLabel(m) {
+  if (m.completed) return "Abgeschlossen";
+  if (m.pinned) return "In Bearbeitung";
+  return "Demnächst";
+}
+function printProgressBar(pct) {
+  return `<span class="pv-bar"><span style="width:${Math.max(0, Math.min(100, pct || 0))}%"></span></span>`;
+}
 function buildPrintView() {
   const pv = document.getElementById("print-view");
   if (!pv) return;
-  // Gruppiert nach Semester (unbenannte zuletzt).
-  const groups = {};
-  state.modules.forEach((m) => { const key = m.semester || "Ohne Semester"; (groups[key] = groups[key] || []).push(m); });
-  const keys = Object.keys(groups).sort((a, b) => (a === "Ohne Semester") - (b === "Ohne Semester") || a.localeCompare(b));
+
   const gpa = computeGpa();
   const totalEcts = state.modules.reduce((a, m) => a + (m.ects || 0), 0);
   const doneEcts = state.modules.filter((m) => m.completed).reduce((a, m) => a + (m.ects || 0), 0);
-  let html = `<h1>Studienübersicht</h1>
-    <p class="pv-meta">Stand: ${formatDate(todayIso())} · ECTS gesamt: ${totalEcts} · davon abgeschlossen: ${doneEcts}${gpa ? ` · Notenschnitt: ${commaNum(gpa.value, 2)}` : ""}</p>`;
+  const overallPct = totalEcts > 0 ? Math.round((doneEcts / totalEcts) * 100)
+    : (state.modules.length ? Math.round(state.modules.filter((m) => m.completed).length / state.modules.length * 100) : 0);
+  const range = (typeof gradeRange === "function") ? gradeRange() : null;
+  const streak = (typeof studyStreak === "function") ? studyStreak() : 0;
+  const totalStudySec = Object.values(stats.daily || {}).reduce((a, s) => a + (Number(s) || 0), 0);
+  const studyDays = Object.values(stats.daily || {}).filter((s) => Number(s) > 0).length;
+
+  let html = `
+    <div class="pv-head">
+      <div class="pv-title"><small>🎓 Studien-Tracker</small>Meine Studienübersicht</div>
+      <div class="pv-head-meta">Stand: ${formatDate(todayIso())}</div>
+    </div>
+    <div class="pv-cards">
+      <div class="pv-card"><div class="pv-card-num">${overallPct}%</div><div class="pv-card-lbl">Fortschritt</div></div>
+      <div class="pv-card"><div class="pv-card-num">${gpa ? commaNum(gpa.value, 2) : "—"}</div><div class="pv-card-lbl">Ø Note</div></div>
+      <div class="pv-card"><div class="pv-card-num">${doneEcts}/${totalEcts || "—"}</div><div class="pv-card-lbl">ECTS</div></div>
+      <div class="pv-card"><div class="pv-card-num">${streak}</div><div class="pv-card-lbl">Tage Serie</div></div>
+    </div>`;
+
+  // Module nach Semester gruppiert
+  const groups = {};
+  state.modules.forEach((m) => { const key = m.semester || "Ohne Semester"; (groups[key] = groups[key] || []).push(m); });
+  const keys = Object.keys(groups).sort((a, b) => (a === "Ohne Semester") - (b === "Ohne Semester") || a.localeCompare(b));
   keys.forEach((k) => {
     html += `<h2>${escapeHtml(k)}</h2>
-      <table class="pv-table"><thead><tr><th>Modul</th><th>ECTS</th><th>Note</th><th>Status</th></tr></thead><tbody>`;
+      <table class="pv-table"><thead><tr><th>Modul</th><th>ECTS</th><th>Note</th><th>Status</th><th>Fortschritt</th></tr></thead><tbody>`;
     groups[k].forEach((m) => {
+      const g = (m.gradeComponents && m.gradeComponents.length) ? computeComponentGrade(m) : m.grade;
       html += `<tr>
         <td>${escapeHtml(m.name)}</td>
-        <td>${m.ects || "—"}</td>
-        <td>${typeof m.grade === "number" ? commaNum(m.grade) : "—"}</td>
-        <td>${m.completed ? "abgeschlossen" : (m.pinned ? "in Bearbeitung" : "offen")}</td>
+        <td class="pv-c">${m.ects || "—"}</td>
+        <td class="pv-c">${typeof g === "number" ? commaNum(g) : "—"}</td>
+        <td>${moduleStatusLabel(m)}</td>
+        <td>${printProgressBar(moduleProgress(m))}</td>
       </tr>`;
     });
     html += `</tbody></table>`;
   });
+
+  // Noten-Prognose
+  if (range) {
+    html += `<h2>Noten-Prognose</h2>
+      <table class="pv-table"><tbody>
+        <tr><td>Noch offene ECTS</td><td class="pv-c">${range.openEcts}</td></tr>
+        <tr><td>Bester möglicher Endschnitt</td><td class="pv-c">${commaNum(range.best, 2)}</td></tr>
+        <tr><td>Schlechtester Endschnitt (noch bestanden)</td><td class="pv-c">${commaNum(range.worst, 2)}</td></tr>
+      </tbody></table>`;
+  }
+
+  // Lernzeit & Serie
+  html += `<h2>Lernzeit &amp; Lern-Serie</h2>
+    <table class="pv-table"><tbody>
+      <tr><td>Lernzeit gesamt</td><td class="pv-c">${formatDuration(totalStudySec)}</td></tr>
+      <tr><td>Lerntage gesamt</td><td class="pv-c">${studyDays}</td></tr>
+      <tr><td>Aktuelle Lern-Serie</td><td class="pv-c">${streak} ${streak === 1 ? "Tag" : "Tage"}</td></tr>
+      <tr><td>Abgeschlossene Fokus-Einheiten</td><td class="pv-c">${stats.sessions || 0}</td></tr>
+    </tbody></table>`;
+
+  // Lernzeit je Modul (nur Module mit erfasster Zeit)
+  const perMod = state.modules
+    .map((m) => ({ name: m.name, sec: (stats.perModule && stats.perModule[m.id]) || 0 }))
+    .filter((x) => x.sec > 0)
+    .sort((a, b) => b.sec - a.sec);
+  if (perMod.length) {
+    html += `<table class="pv-table"><thead><tr><th>Modul</th><th>Lernzeit</th></tr></thead><tbody>`;
+    perMod.forEach((x) => { html += `<tr><td>${escapeHtml(x.name)}</td><td class="pv-c">${formatDuration(x.sec)}</td></tr>`; });
+    html += `</tbody></table>`;
+  }
+
+  if (!state.modules.length) {
+    html += `<p class="pv-meta">Noch keine Module angelegt — lege welche an, dann erscheinen sie hier.</p>`;
+  }
+
   pv.innerHTML = html;
 }
 const printBtn = document.getElementById("print-btn");

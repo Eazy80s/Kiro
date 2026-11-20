@@ -72,28 +72,13 @@ function buildSheets() {
   add("01-semesteruebersicht", T.semesteruebersicht(data));
   add("02-monatskalender", T.monatskalender(data, (opts.month != null || data) ? { year: calYear, month: calMonth } : {}));
   add("03-wochenplan", T.wochenplan());
-  add("04-modul-uebersicht", T.modulUebersicht(data));
 
   // Modul-Detailblatt: mit Daten je Modul ein Blatt, sonst ein leeres
   if (data && data.modules.length) {
-    data.modules.forEach((m, i) => add(`05-modul-${String(i + 1).padStart(2, "0")}`, T.modulDetailblatt(m)));
+    data.modules.forEach((m, i) => add(`04-modul-${String(i + 1).padStart(2, "0")}`, T.modulDetailblatt(m)));
   } else {
-    add("05-modul-detailblatt", T.modulDetailblatt(null));
+    add("04-modul-detailblatt", T.modulDetailblatt(null));
   }
-
-  add("06-noten-tracker", T.notenTracker(data));
-
-  // Teilnoten: mit Daten je Modul mit Komponenten, sonst leer
-  if (data && data.modules.some((m) => m.gradeComponents && m.gradeComponents.length)) {
-    data.modules.filter((m) => m.gradeComponents && m.gradeComponents.length)
-      .forEach((m, i) => add(`07-teilnoten-${String(i + 1).padStart(2, "0")}`, T.teilnotenRechner(m)));
-  } else {
-    add("07-teilnoten-rechner", T.teilnotenRechner(null));
-  }
-
-  add("08-lernzeit-pomodoro-log", T.lernzeitLog(data));
-  add("09-streak-tracker", T.streakTracker(data, (opts.month != null || data) ? { year: calYear, month: calMonth } : {}));
-  add("10-fokus-heute", T.fokusHeute(data));
 
   return opts.only ? sheets.filter((s) => s.name.includes(opts.only)) : sheets;
 }

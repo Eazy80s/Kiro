@@ -75,11 +75,16 @@ export function bookletHtml(fragments, { paper = "a5", tonerSave = false, inline
     return `<section class="booklet-page page-${orient}${last ? "" : " page-break"}">${f.body}</section>`;
   }).join("\n");
   const namedPages = `
-    @page portrait-page { size: ${paper.toUpperCase()} portrait; margin: 10mm 9mm 9mm 9mm; }
-    @page landscape-page { size: ${paper.toUpperCase()} landscape; margin: 9mm 9mm 9mm 9mm; }
+    @page portrait-page { size: ${paper.toUpperCase()} portrait; margin: 8mm 8mm 7mm 8mm; }
+    @page landscape-page { size: ${paper.toUpperCase()} landscape; margin: 7mm 8mm; }
     .page-portrait { page: portrait-page; }
     .page-landscape { page: landscape-page; }
-    .booklet-page { }`;
+    /* Im Heft darf .sheet nicht per 100vh überlaufen (sonst Extra-Seiten).
+       Jede Blattsektion ist genau eine Seite; .sheet füllt sie per height:100%. */
+    html, body { height: auto; }
+    .booklet-page { display: block; }
+    .booklet-page > .sheet { min-height: 0; height: auto; }
+    .page-break { break-after: page; page-break-after: always; }`;
   return `<!doctype html>
 <html lang="de" class="fmt-${paper}-portrait ${cls}">
 <head>

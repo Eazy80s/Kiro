@@ -278,6 +278,48 @@ eq(tRange(null, "10:00"), "", "timeRange: ohne Start → leer");
 eq(mot("08:30"), 510, "minutesOfTime: 08:30 = 510 Min.");
 eq(mot(null), null, "minutesOfTime: null → null");
 
+/* ---- itemSpan: Start/Ende mit Standard-Dauer ---- */
+const span = api.itemSpan;
+eq(span({ startTime: "09:00", endTime: "10:30" }, 60), { start: 540, end: 630 }, "itemSpan: Von–Bis");
+eq(span({ startTime: "09:00", endTime: null }, 45), { start: 540, end: 585 }, "itemSpan: ohne Ende → Standard-Dauer 45");
+eq(span({ startTime: "09:00", endTime: "08:00" }, 60), { start: 540, end: 600 }, "itemSpan: Ende ≤ Start → Standard-Dauer");
+eq(span({ startTime: null }, 60), null, "itemSpan: ohne Start → null");
+
+/* ---- layoutOverlaps: Spalten + Überschneidungsmarkierung ---- */
+const lay = api.layoutOverlaps;
+{
+  // Zwei überlappende (09–10:30, 10–11) + ein separater (12–13).
+  const r = lay([
+    { id: "a", startTime: "09:00", endTime: "10:30" },
+    { id: "b", startTime: "10:00", endTime: "11:00" },
+    { id: "c", startTime: "12:00", endTime: "13:00" },
+  ], 60);
+  const byId = Object.fromEntries(r.map((x) => [x.it.id, x]));
+  eq([byId.a.overlap, byId.b.overlap], [true, true], "layoutOverlaps: a & b überschneiden sich");
+  eq(byId.c.overlap, false, "layoutOverlaps: c separat, keine Überschneidung");
+  eq([byId.a.cols, byId.b.cols], [2, 2], "layoutOverlaps: Gruppe a/b hat 2 Spalten");
+  eq([byId.a.col, byId.b.col], [0, 1], "layoutOverlaps: a in Spalte 0, b in Spalte 1");
+  eq(byId.c.cols, 1, "layoutOverlaps: c allein → 1 Spalte");
+}
+{
+  // Aneinandergrenzend (10–11, 11–12) gilt NICHT als Überschneidung.
+  const r = lay([
+    { id: "x", startTime: "10:00", endTime: "11:00" },
+    { id: "y", startTime: "11:00", endTime: "12:00" },
+  ], 60);
+  eq(r.every((z) => !z.overlap), true, "layoutOverlaps: aneinandergrenzend ist keine Überschneidung");
+}
+
+/* ---- migrate v9: Wochenraster-Einstellungen ---- */
+{
+  const d1 = api.migrate({});
+  eq(d1.weekGrid, { startHour: 8, endHour: 21, defaultDurationMin: 60 }, "migrate: Standard-Wochenraster");
+  const d2 = api.migrate({ weekGrid: { startHour: 6, endHour: 22, defaultDurationMin: 90 } });
+  eq(d2.weekGrid, { startHour: 6, endHour: 22, defaultDurationMin: 90 }, "migrate: gültiges Raster bleibt");
+  const d3 = api.migrate({ weekGrid: { startHour: 20, endHour: 8, defaultDurationMin: 9999 } });
+  eq(d3.weekGrid, { startHour: 8, endHour: 21, defaultDurationMin: 60 }, "migrate: ungültiges Raster → Standard");
+}
+
 /* ---- ECTS-Studienziel ---- */
 const ep = api.ectsProgress;
 {

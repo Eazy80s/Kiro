@@ -82,6 +82,19 @@ function migrate(data) {
   if (!Array.isArray(data.events)) data.events = [];
   // Studienziel in ECTS (z. B. 180). 0/leer = kein Ziel gesetzt.
   data.ectsTarget = Number(data.ectsTarget) > 0 ? Number(data.ectsTarget) : 0;
+  // Einstellungen des Wochen-Stundenrasters: Fenster (Start/Ende-Stunde) und
+  // Standard-Dauer neuer/zeitlich gesetzter Blöcke in Minuten.
+  if (!data.weekGrid || typeof data.weekGrid !== "object") data.weekGrid = {};
+  {
+    let s = Math.round(Number(data.weekGrid.startHour));
+    let e = Math.round(Number(data.weekGrid.endHour));
+    let dur = Math.round(Number(data.weekGrid.defaultDurationMin));
+    if (!(s >= 0 && s <= 23)) s = 8;
+    if (!(e >= 1 && e <= 24)) e = 21;
+    if (e <= s) { s = 8; e = 21; }           // ungültiges Fenster → Standard
+    if (!(dur >= 15 && dur <= 480)) dur = 60; // 15 min … 8 h, sonst 60
+    data.weekGrid = { startHour: s, endHour: e, defaultDurationMin: dur };
+  }
 
   // --- Versionierte, nicht-additive Umwandlungen (von alt nach neu) ---
   const from = Number(data.schemaVersion) || 0;
@@ -1081,11 +1094,13 @@ function renderCalendar() {
   renderDayDetail();
 }
 
-// Stundenraster der Wochenansicht: von WEEK_START_HOUR bis WEEK_END_HOUR.
-const WEEK_START_HOUR = 8;
-const WEEK_END_HOUR = 21;   // letzte beschriftete Stunde (Zeilen 08…21)
-const WEEK_HOURS = WEEK_END_HOUR - WEEK_START_HOUR + 1;
-const WEEK_ROW_PX = 44;     // Höhe einer Stundenzeile im Raster
+// Stundenraster der Wochenansicht — Fenster & Standard-Dauer aus state.weekGrid
+// (in den Einstellungen anpassbar). WEEK_ROW_PX = Höhe einer Stundenzeile.
+const WEEK_ROW_PX = 44;
+function weekStartHour() { return (state.weekGrid && state.weekGrid.startHour) || 8; }
+function weekEndHour() { return (state.weekGrid && state.weekGrid.endHour) || 21; }
+function weekHours() { return weekEndHour() - weekStartHour() + 1; }
+function defaultDurationMin() { return (state.weekGrid && state.weekGrid.defaultDurationMin) || 60; }
 
 // "HH:MM" → Minuten seit Mitternacht (oder null).
 function minutesOfTime(t) {
@@ -1093,6 +1108,56 @@ function minutesOfTime(t) {
   if (!n) return null;
   const [h, m] = n.split(":").map(Number);
   return h * 60 + m;
+}
+
+// Start/Ende (Minuten) eines Postens; ohne Endzeit Standard-Dauer. Reine Funktion.
+function itemSpan(it, defMin) {
+  const start = minutesOfTime(it.startTime);
+  if (start == null) return null;
+  let end = minutesOfTime(it.endTime);
+  if (end == null || end <= start) end = start + (defMin || 60);
+  return { start, end };
+}
+
+// Überschneidungs-Layout für zeitlich platzierte Posten eines Tages.
+// Bestimmt pro Posten eine Spalte (col) und die Spaltenanzahl der Überlappungs-
+// gruppe (cols), sowie ob er sich mit einem anderen überschneidet (overlap).
+// Reine Funktion (nimmt Items mit startTime/endTime) → testbar.
+function layoutOverlaps(items, defMin) {
+  const spans = items
+    .map((it) => ({ it, ...(itemSpan(it, defMin) || {}) }))
+    .filter((x) => x.start != null)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const result = [];
+  let cluster = [];          // aktuelle Gruppe sich (transitiv) überlappender Blöcke
+  let clusterEnd = -1;
+
+  const flush = () => {
+    if (!cluster.length) return;
+    // Greedy-Spaltenzuweisung innerhalb der Gruppe.
+    const colEnds = []; // Endzeit je Spalte
+    cluster.forEach((x) => {
+      let col = colEnds.findIndex((end) => end <= x.start);
+      if (col === -1) { col = colEnds.length; colEnds.push(x.end); }
+      else colEnds[col] = x.end;
+      x.col = col;
+    });
+    const cols = colEnds.length;
+    cluster.forEach((x) => result.push({
+      it: x.it, start: x.start, end: x.end, col: x.col, cols,
+      overlap: cols > 1,
+    }));
+    cluster = []; clusterEnd = -1;
+  };
+
+  spans.forEach((x) => {
+    if (cluster.length && x.start >= clusterEnd) flush();
+    cluster.push(x);
+    clusterEnd = Math.max(clusterEnd, x.end);
+  });
+  flush();
+  return result;
 }
 
 // Hybride Wochenansicht (Mo–So): oben eine „ohne feste Zeit"-Leiste, darunter ein
@@ -1132,27 +1197,21 @@ function renderWeek() {
     days.push({ iso, d, items, isMatch, isDimmed: calendarFilter && !isMatch });
   }
 
-  const buildBlock = (it, iso, positioned) => {
+  // Einfacher Block für die „ohne Zeit"-Leiste (keine Rasterposition).
+  const buildBlock = (it, iso) => {
     const ev = document.createElement("div");
-    ev.className = `cal-event ${it.type}` + (it.done ? " done" : "") + (positioned ? " wk-block" : "");
+    ev.className = `cal-event ${it.type}` + (it.done ? " done" : "");
     if (it.color) ev.style.background = it.color;
     const tr = timeRange(it.startTime, it.endTime);
-    ev.textContent = (tr && !positioned ? tr + " " : "") + it.title + (it.repeat ? " ↻" : "");
+    ev.textContent = (tr ? tr + " " : "") + it.title + (it.repeat ? " ↻" : "");
     ev.title = (tr ? tr + " · " : "") + it.title + " — gedrückt halten und auf einen anderen Tag/Slot ziehen";
     ev.dataset.dragKind = it.kind; ev.dataset.dragId = it.id; ev.dataset.fromDate = iso;
-    if (positioned) {
-      const startMin = minutesOfTime(it.startTime);
-      const top = ((startMin - WEEK_START_HOUR * 60) / 60) * WEEK_ROW_PX;
-      let endMin = minutesOfTime(it.endTime);
-      if (endMin == null || endMin <= startMin) endMin = startMin + 60; // Default 1 h
-      const height = Math.max(22, ((endMin - startMin) / 60) * WEEK_ROW_PX - 2);
-      ev.style.top = Math.max(0, top) + "px";
-      ev.style.height = height + "px";
-      ev.innerHTML = `<span class="wk-block-time">${escapeHtml(tr)}</span> ${escapeHtml(it.title)}${it.repeat ? " ↻" : ""}`;
-    }
     makeDraggableCalEvent(ev);
     return ev;
   };
+
+  const startH = weekStartHour(), endH = weekEndHour(), rows = weekHours();
+  const windowStartMin = startH * 60, windowEndMin = (endH + 1) * 60;
 
   // --- Aufbau: Kopfzeile, Ganztags-Leiste, Stundenraster ---
   wrap.innerHTML = "";
@@ -1186,7 +1245,7 @@ function renderWeek() {
     const cell = document.createElement("div");
     cell.className = colClass(day) + " wk-allday-cell";
     cell.dataset.date = day.iso; // Drop ohne Uhrzeit
-    day.items.filter((it) => !it.startTime).forEach((it) => cell.appendChild(buildBlock(it, day.iso, false)));
+    day.items.filter((it) => !it.startTime).forEach((it) => cell.appendChild(buildBlock(it, day.iso)));
     allday.appendChild(cell);
   });
   wrap.appendChild(allday);
@@ -1194,12 +1253,12 @@ function renderWeek() {
   // Stundenraster: Zeitachse links + 7 Tagesspalten mit absoluten Blöcken.
   const grid = document.createElement("div");
   grid.className = "wk-grid";
-  grid.style.setProperty("--wk-rows", String(WEEK_HOURS));
+  grid.style.setProperty("--wk-rows", String(rows));
   grid.style.setProperty("--wk-row-px", WEEK_ROW_PX + "px");
 
   const axis = document.createElement("div");
   axis.className = "wk-axis";
-  for (let hh = WEEK_START_HOUR; hh <= WEEK_END_HOUR; hh++) {
+  for (let hh = startH; hh <= endH; hh++) {
     const lab = document.createElement("div");
     lab.className = "wk-hour-label";
     lab.textContent = String(hh).padStart(2, "0") + ":00";
@@ -1207,25 +1266,61 @@ function renderWeek() {
   }
   grid.appendChild(axis);
 
+  // „Jetzt"-Linie (Punkt 2): nur wenn heute in der sichtbaren Woche liegt und die
+  // aktuelle Uhrzeit ins Fenster fällt.
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const todayInWeek = days.some((day) => day.iso === today);
+  const showNow = todayInWeek && nowMin >= windowStartMin && nowMin <= windowEndMin;
+
   days.forEach((day) => {
     const col = document.createElement("div");
     col.className = colClass(day) + " wk-daycol";
     col.dataset.date = day.iso;
     col.dataset.slotted = "1"; // markiert Spalten mit Uhrzeit-Drop
-    // Stundenlinien
-    for (let r = 0; r < WEEK_HOURS; r++) {
+    // Stundenlinien (Drop-Ziele für Uhrzeit)
+    for (let r = 0; r < rows; r++) {
       const line = document.createElement("div");
       line.className = "wk-hour-line";
       line.dataset.date = day.iso;
-      line.dataset.hour = String(WEEK_START_HOUR + r);
+      line.dataset.hour = String(startH + r);
       col.appendChild(line);
     }
-    // positionierte Blöcke (mit Uhrzeit, innerhalb des Rasterfensters)
-    day.items.filter((it) => it.startTime).forEach((it) => {
-      const startMin = minutesOfTime(it.startTime);
-      // Außerhalb 08–21 Uhr? Dann in die „ohne Zeit"-Leiste wäre verwirrend — wir
-      // klemmen den Block ans Raster (oben/unten), zeigen ihn aber mit echter Zeit.
-      col.appendChild(buildBlock(it, day.iso, true));
+
+    // „Jetzt"-Linie in die heutige Spalte zeichnen.
+    if (showNow && day.iso === today) {
+      const nl = document.createElement("div");
+      nl.className = "wk-now-line";
+      nl.style.top = ((nowMin - windowStartMin) / 60) * WEEK_ROW_PX + "px";
+      nl.setAttribute("aria-hidden", "true");
+      col.appendChild(nl);
+    }
+
+    // Positionierte Blöcke mit Überschneidungs-Layout (Punkt 1).
+    const timed = day.items.filter((it) => it.startTime);
+    const laid = layoutOverlaps(timed, defaultDurationMin());
+    laid.forEach(({ it, start, end, col: c, cols, overlap }) => {
+      const ev = document.createElement("div");
+      ev.className = `cal-event ${it.type} wk-block` + (it.done ? " done" : "") + (overlap ? " overlap" : "");
+      if (it.color) ev.style.background = it.color;
+      const tr = timeRange(it.startTime, it.endTime);
+      // Position: oben/höhe aus Minuten; ans Fenster klemmen, falls außerhalb.
+      const clampedStart = Math.max(start, windowStartMin);
+      const clampedEnd = Math.min(end, windowEndMin);
+      const top = ((clampedStart - windowStartMin) / 60) * WEEK_ROW_PX;
+      const height = Math.max(20, ((clampedEnd - clampedStart) / 60) * WEEK_ROW_PX - 2);
+      ev.style.top = Math.max(0, top) + "px";
+      ev.style.height = height + "px";
+      // Breite/links nach Spalte (bei Überschneidung nebeneinander).
+      const widthPct = 100 / cols;
+      ev.style.left = `calc(${c * widthPct}% + 2px)`;
+      ev.style.width = `calc(${widthPct}% - 4px)`;
+      const warn = overlap ? ` <span class="wk-clash" title="überschneidet sich zeitlich">⚠</span>` : "";
+      ev.innerHTML = `<span class="wk-block-time">${escapeHtml(tr)}</span> ${escapeHtml(it.title)}${it.repeat ? " ↻" : ""}${warn}`;
+      ev.title = (tr ? tr + " · " : "") + it.title + (overlap ? " — überschneidet sich mit einem anderen Eintrag" : "") + " — gedrückt halten und auf einen anderen Tag/Slot ziehen";
+      ev.dataset.dragKind = it.kind; ev.dataset.dragId = it.id; ev.dataset.fromDate = day.iso;
+      makeDraggableCalEvent(ev);
+      col.appendChild(ev);
     });
     grid.appendChild(col);
   });
@@ -1488,7 +1583,7 @@ function moveCalItem(kind, id, fromDate, toDate, toHour) {
     if (toHour == null) return;
     const oldStart = minutesOfTime(obj.startTime);
     const oldEnd = minutesOfTime(obj.endTime);
-    const dur = (oldStart != null && oldEnd != null && oldEnd > oldStart) ? (oldEnd - oldStart) : 60;
+    const dur = (oldStart != null && oldEnd != null && oldEnd > oldStart) ? (oldEnd - oldStart) : defaultDurationMin();
     obj.startTime = String(toHour).padStart(2, "0") + ":00";
     const endMin = Math.min(24 * 60, toHour * 60 + dur);
     const eh = Math.floor(endMin / 60), em = endMin % 60;
@@ -2092,6 +2187,7 @@ function renderModuleCard(m) {
         ${linkChip}
         <input type="date" class="task-date" data-date value="${t.date || ""}" title="Terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum von ${escapeHtml(t.text)}" />
         <button class="icon-btn task-opts-btn" data-task-opts title="Uhrzeit & Link bearbeiten" aria-label="Uhrzeit und Link von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
+        <button class="icon-btn task-dup-btn" data-dup-task title="Aufgabe duplizieren" aria-label="${escapeHtml(t.text)} duplizieren">${icon("copy")}</button>
         <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="${escapeHtml(t.text)} löschen">${icon("close")}</button>
       </div>
       <div class="task-opts" hidden>
@@ -2159,6 +2255,20 @@ function renderModuleCard(m) {
         m.tasks.splice(Math.min(idx, m.tasks.length), 0, t);
         saveState(); renderModules();
       });
+    });
+
+    // Aufgabe duplizieren (direkt darunter einfügen). Datum wird NICHT übernommen,
+    // damit die Kopie bewusst neu terminiert wird; Zeit/Link/Teilaufgaben bleiben.
+    li.querySelector("[data-dup-task]").addEventListener("click", () => {
+      const copy = {
+        id: uid(), text: t.text, done: false, date: null,
+        startTime: t.startTime, endTime: t.endTime, url: t.url,
+        subtasks: (t.subtasks || []).map((s) => ({ id: uid(), text: s.text, done: false })),
+      };
+      const idx = m.tasks.indexOf(t);
+      m.tasks.splice(idx + 1, 0, copy);
+      saveState(); renderModules();
+      showSnackbar(`Aufgabe „${t.text}“ dupliziert.`);
     });
 
     // Uhrzeit & Link ein-/ausblenden (kleiner Editor pro Aufgabe).
@@ -2360,6 +2470,7 @@ document.getElementById("import-file").addEventListener("change", (e) => {
           sessions: Number(ps.sessions) || 0,
           daily: (ps.daily && typeof ps.daily === "object") ? ps.daily : {},
           perModule: (ps.perModule && typeof ps.perModule === "object") ? ps.perModule : {},
+          perTask: (ps.perTask && typeof ps.perTask === "object") ? ps.perTask : {},
           goals: (ps.goals && typeof ps.goals === "object") ? { ...DEFAULT_GOALS, ...ps.goals } : { ...DEFAULT_GOALS },
         };
         pomoSessions = stats.sessions;
@@ -2389,7 +2500,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   if (!confirm("ALLE Daten dauerhaft löschen? Das kann nicht rückgängig gemacht werden.")) return;
   state = migrate({ modules: [], events: [] });
   saveState();
-  stats = { sessions: 0, daily: {}, perModule: {}, goals: { ...DEFAULT_GOALS } };
+  stats = { sessions: 0, daily: {}, perModule: {}, perTask: {}, goals: { ...DEFAULT_GOALS } };
   pomoSessions = 0;
   saveStats();
   renderDashboard(); renderCalendar(); renderModules();
@@ -2447,12 +2558,13 @@ function loadStats() {
       if (typeof s.sessions !== "number") s.sessions = 0;
       if (!s.daily || typeof s.daily !== "object") s.daily = {};
       if (!s.perModule || typeof s.perModule !== "object") s.perModule = {};
+      if (!s.perTask || typeof s.perTask !== "object") s.perTask = {};
       if (!s.goals || typeof s.goals !== "object") s.goals = { ...DEFAULT_GOALS };
       return s;
     }
   } catch (e) {}
-  // daily: { "YYYY-MM-DD": sec } · perModule: { moduleId: sec } · goals (hours)
-  return { sessions: 0, daily: {}, perModule: {}, goals: { ...DEFAULT_GOALS } };
+  // daily: { "YYYY-MM-DD": sec } · perModule: { moduleId: sec } · perTask: { taskId: sec } · goals (hours)
+  return { sessions: 0, daily: {}, perModule: {}, perTask: {}, goals: { ...DEFAULT_GOALS } };
 }
 function saveStats() { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }
 
@@ -2463,6 +2575,7 @@ function addStudySeconds(sec) {
   const before = stats.daily[d] || 0;
   stats.daily[d] = before + sec;
   if (pomoModuleId) stats.perModule[pomoModuleId] = (stats.perModule[pomoModuleId] || 0) + sec;
+  if (pomoTaskId) { if (!stats.perTask) stats.perTask = {}; stats.perTask[pomoTaskId] = (stats.perTask[pomoTaskId] || 0) + sec; }
   saveStats();
   // Tagesziel erreicht? Einmal pro Tag feiern (Punkt 9).
   const goalSec = ((stats.goals && stats.goals.day) || DEFAULT_GOALS.day) * 3600;
@@ -2483,6 +2596,7 @@ let pomoRemaining = pomoSeconds(pomoMode);
 let pomoTimerId = null;
 let pomoSessions = stats.sessions; // restored from storage
 let pomoModuleId = "";             // optional: Modul, dem die Fokuszeit zugeordnet wird
+let pomoTaskId = "";               // optional: konkrete Aufgabe im gewählten Modul
 let pomoEndTime = null;            // absolute ms timestamp the period ends
 let pomoLastTick = null;           // last wall-clock sample (for study accrual)
 let studyCarry = 0;                // sub-second focus time carried between ticks
@@ -2739,10 +2853,31 @@ function fillPomoModuleSelect() {
   // keep selection if the module still exists
   sel.value = state.modules.some((m) => m.id === prev) ? prev : "";
   pomoModuleId = sel.value;
+  fillPomoTaskSelect();
+}
+// Aufgaben-Dropdown passend zum gewählten Modul (Punkt 7). Nur offene Aufgaben,
+// damit die Liste kurz bleibt. Verschwindet, wenn kein Modul gewählt ist.
+function fillPomoTaskSelect() {
+  const sel = document.getElementById("pomo-task");
+  if (!sel) return;
+  const mod = state.modules.find((m) => m.id === pomoModuleId);
+  if (!mod) { sel.hidden = true; sel.innerHTML = `<option value="">Ganzes Modul</option>`; pomoTaskId = ""; return; }
+  const open = mod.tasks.filter((t) => !t.done);
+  if (!open.length) { sel.hidden = true; pomoTaskId = ""; return; }
+  const prev = pomoTaskId;
+  sel.hidden = false;
+  sel.innerHTML = `<option value="">Ganzes Modul</option>` +
+    open.map((t) => `<option value="${t.id}">${escapeHtml(t.text)}</option>`).join("");
+  sel.value = open.some((t) => t.id === prev) ? prev : "";
+  pomoTaskId = sel.value;
 }
 const pomoModuleSel = document.getElementById("pomo-module");
 if (pomoModuleSel) {
-  pomoModuleSel.addEventListener("change", (e) => { pomoModuleId = e.target.value; });
+  pomoModuleSel.addEventListener("change", (e) => { pomoModuleId = e.target.value; pomoTaskId = ""; fillPomoTaskSelect(); });
+}
+const pomoTaskSel = document.getElementById("pomo-task");
+if (pomoTaskSel) {
+  pomoTaskSel.addEventListener("change", (e) => { pomoTaskId = e.target.value; });
 }
 
 // Lernzeit-Ziele (Punkt 10)
@@ -2774,6 +2909,37 @@ if (goalsForm) {
 function fillEctsTarget() {
   const el = document.getElementById("ects-target");
   if (el) el.value = state.ectsTarget > 0 ? state.ectsTarget : "";
+}
+
+// Wochenraster-Einstellungen (Fenster + Standard-Dauer)
+function fillWeekGridInputs() {
+  const g = state.weekGrid || {};
+  const s = document.getElementById("weekgrid-start");
+  const e = document.getElementById("weekgrid-end");
+  const d = document.getElementById("weekgrid-dur");
+  if (s) s.value = g.startHour != null ? g.startHour : 8;
+  if (e) e.value = g.endHour != null ? g.endHour : 21;
+  if (d) d.value = g.defaultDurationMin != null ? g.defaultDurationMin : 60;
+}
+const weekGridForm = document.getElementById("weekgrid-form");
+if (weekGridForm) {
+  weekGridForm.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    let s = parseInt(document.getElementById("weekgrid-start").value, 10);
+    let e = parseInt(document.getElementById("weekgrid-end").value, 10);
+    let d = parseInt(document.getElementById("weekgrid-dur").value, 10);
+    const status = document.getElementById("weekgrid-status");
+    if (!(s >= 0 && s <= 23) || !(e >= 1 && e <= 24) || e <= s) {
+      if (status) status.textContent = "Ungültiges Fenster — „Bis“ muss nach „Von“ liegen (0–24 Uhr).";
+      return;
+    }
+    if (!(d >= 15 && d <= 480)) d = 60;
+    state.weekGrid = { startHour: s, endHour: e, defaultDurationMin: d };
+    saveState();
+    fillWeekGridInputs();
+    renderCalendar();
+    if (status) status.textContent = `Gespeichert: ${String(s).padStart(2,"0")}–${String(e).padStart(2,"0")} Uhr, Standard ${d} Min.`;
+  });
 }
 const ectsGoalForm = document.getElementById("ects-goal-form");
 if (ectsGoalForm) {
@@ -2900,6 +3066,39 @@ function moduleStatusLabel(m) {
 function printProgressBar(pct) {
   return `<span class="pv-bar"><span style="width:${Math.max(0, Math.min(100, pct || 0))}%"></span></span>`;
 }
+// Druckbarer Wochenplan der aktuell gewählten Woche: eine Zeile je Tag mit den
+// chronologisch sortierten Posten (Von–Bis-Zeit, Titel, Typ). Tabelle statt
+// Pixelraster, damit es zuverlässig druckt.
+function buildPrintWeek() {
+  const base = selectedDate || todayIso();
+  const start = mondayOf(base);
+  const WD = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  let rows = "";
+  let any = false;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start + "T00:00:00"); d.setDate(d.getDate() + i);
+    const iso = isoOf(d);
+    const posts = [];
+    eventsOnDate(iso).forEach((e) => posts.push({ t: e.startTime, text: e.title, type: typeLabel(e.type), s: e.startTime, e: e.endTime }));
+    tasksOnDate(iso).forEach(({ module, task }) => posts.push({ t: task.startTime, text: `${task.text} · ${module.name}`, type: "Aufgabe", s: task.startTime, e: task.endTime }));
+    posts.sort((a, b) => (a.t || "99:99").localeCompare(b.t || "99:99"));
+    if (posts.length) any = true;
+    const cells = posts.length
+      ? posts.map((p) => {
+          const tr = timeRange(p.s, p.e);
+          return `<div class="pv-wk-item"><span class="pv-wk-time">${tr || "—"}</span> ${escapeHtml(p.text)} <span class="pv-wk-type">(${p.type})</span></div>`;
+        }).join("")
+      : `<span class="pv-meta">—</span>`;
+    rows += `<tr><td class="pv-wk-day">${WD[i]}<br><span class="pv-meta">${d.getDate()}.${d.getMonth() + 1}.</span></td><td>${cells}</td></tr>`;
+  }
+  if (!any) return ""; // leere Woche → Abschnitt weglassen
+  const sD = new Date(start + "T00:00:00");
+  const eD = new Date(start + "T00:00:00"); eD.setDate(eD.getDate() + 6);
+  const fmt = (x) => `${x.getDate()}.${x.getMonth() + 1}.`;
+  return `<h2>Wochenplan ${fmt(sD)} – ${fmt(eD)}</h2>
+    <table class="pv-table pv-week"><tbody>${rows}</tbody></table>`;
+}
+
 function buildPrintView() {
   const pv = document.getElementById("print-view");
   if (!pv) return;
@@ -2955,6 +3154,9 @@ function buildPrintView() {
         <tr><td>Schlechtester Endschnitt (noch bestanden)</td><td class="pv-c">${commaNum(range.worst, 2)}</td></tr>
       </tbody></table>`;
   }
+
+  // Wochenplan der aktuellen (ausgewählten) Woche — druckfreundliche Tabelle.
+  html += buildPrintWeek();
 
   // Lernzeit & Serie
   html += `<h2>Lernzeit &amp; Lern-Serie</h2>
@@ -3137,7 +3339,7 @@ const ICONS = {
   cap: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
   link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
-  play: '<path d="M8 5v14l11-7z"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
 };
 function icon(name, cls) {
   const p = ICONS[name] || "";
@@ -3275,6 +3477,7 @@ function applyRemote(doc) {
     }
     fillGoalInputs();
     fillEctsTarget();
+    fillWeekGridInputs();
     renderAll();
   } finally {
     syncApplying = false;
@@ -3613,6 +3816,7 @@ initCalendarState();
 fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
 fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
 fillEctsTarget();            // Studienziel (ECTS)
+fillWeekGridInputs();        // Wochenraster-Einstellungen
 fillCreateSemester();        // Semester-Dropdown im „Modul hinzufügen“-Formular
 fillEntryModuleSelect();     // Modul-Auswahl im vereinheitlichten Hinzufügen-Formular
 updateEntryFormMode();       // Felder je nach Art (Aufgabe/Prüfung) ein-/ausblenden
@@ -3638,6 +3842,7 @@ if (typeof module !== "undefined" && module.exports) {
     migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
+    itemSpan, layoutOverlaps,
   };
 }
 

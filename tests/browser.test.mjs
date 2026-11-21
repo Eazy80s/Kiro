@@ -69,6 +69,8 @@ check(dom.includes('id="semester-block"'), "Semester-Noten-Block vorhanden");
 check(dom.includes('id="calendar-search"'), "Kalendersuche vorhanden");
 check(dom.includes('id="view-week"') && dom.includes('id="view-month"'), "Monats-/Wochen-Umschalter vorhanden");
 check(dom.includes('id="entry-form"') && dom.includes('id="entry-kind"'), "Vereinheitlichtes Hinzufügen-Formular (Aufgabe/Prüfung)");
+check(dom.includes('id="weekgrid-form"'), "Wochenraster-Einstellungen vorhanden");
+check(dom.includes('id="pomo-task"'), "Pomodoro-Aufgabenauswahl vorhanden");
 check(dom.includes('id="ics-import-file"'), "ICS-Import vorhanden");
 check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
 // Lernplan: Typ (Vorlesung/Aufgabe) + Link erscheinen nur nach Laden der Beispieldaten,

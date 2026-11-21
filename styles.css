@@ -286,7 +286,7 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 }
 .time-badge .ic { width: 0.85em; height: 0.85em; }
 .task-link { flex: 0 0 auto; font-size: 0.72rem !important; }
-.task-opts-btn { flex: 0 0 auto; }
+.task-opts-btn, .task-dup-btn { flex: 0 0 auto; }
 .task-opts {
   display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
   margin: 6px 0 2px; padding: 8px 10px;
@@ -716,6 +716,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .print-view .pv-table th, .print-view .pv-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 0.9rem; }
 .print-view .pv-table th { background: #f0f0f0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
 .print-view .pv-table td.pv-c { text-align: center; }
+/* Wochenplan im Druck */
+.print-view .pv-week td.pv-wk-day { white-space: nowrap; font-weight: 600; width: 120px; vertical-align: top; }
+.print-view .pv-wk-item { font-size: 0.86rem; margin: 1px 0; }
+.print-view .pv-wk-time { font-weight: 600; }
+.print-view .pv-wk-type { color: #777; font-size: 0.8rem; }
 
 /* Kopf im App-Look (Akzent-Unterstrich) */
 .print-view .pv-head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2.5px solid #4f46e5; padding-bottom: 6px; margin-bottom: 14px; }
@@ -1001,6 +1006,12 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .wk-block.task { background: var(--accent-2, #6366f1); }
 .wk-block.done { opacity: 0.55; text-decoration: line-through; }
 .wk-block-time { display: block; font-weight: 600; opacity: 0.95; }
+/* Überschneidung: Warn-Rand + kleines ⚠ */
+.wk-block.overlap { outline: 2px solid #f59e0b; outline-offset: -2px; }
+.wk-clash { font-size: 0.8em; }
+/* „Jetzt"-Linie */
+.wk-now-line { position: absolute; left: 0; right: 0; height: 2px; background: #ef4444; z-index: 5; pointer-events: none; }
+.wk-now-line::before { content: ""; position: absolute; left: -1px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; }
 
 @media (max-width: 680px) {
   /* Schmale Geräte: Raster horizontal scrollbar, Spalten mit Mindestbreite */

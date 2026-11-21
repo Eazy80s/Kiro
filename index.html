@@ -198,6 +198,7 @@
         <div class="pomo-module-row">
           <label for="pomo-module" class="muted">Lernzeit zählt für:</label>
           <select id="pomo-module"><option value="">Ohne Modulzuordnung</option></select>
+          <select id="pomo-task" hidden aria-label="Aufgabe (optional)"><option value="">Ganzes Modul</option></select>
         </div>
         <div id="pomo-count" class="pomo-count">Abgeschlossene Fokus-Einheiten: 0</div>
       </div>
@@ -286,6 +287,18 @@
           <span id="conn-badge" class="conn-badge"></span>
           <p id="sync-status" class="muted" aria-live="polite"></p>
         </div>
+      </details>
+
+      <details class="settings-group">
+        <summary>Wochenansicht (Stundenraster)</summary>
+        <p class="muted">Lege fest, welchen Zeitraum das Stundenraster der Wochenansicht zeigt und wie lang ein neuer Block standardmäßig dauert.</p>
+        <form id="weekgrid-form" class="pomo-settings">
+          <label>Von (Uhr) <input type="number" id="weekgrid-start" min="0" max="23" step="1" /></label>
+          <label>Bis (Uhr) <input type="number" id="weekgrid-end" min="1" max="24" step="1" /></label>
+          <label>Standard-Dauer (Min.) <input type="number" id="weekgrid-dur" min="15" max="480" step="15" /></label>
+          <button type="submit" class="primary-btn">Speichern</button>
+        </form>
+        <p id="weekgrid-status" class="muted"></p>
       </details>
 
       <details class="settings-group">

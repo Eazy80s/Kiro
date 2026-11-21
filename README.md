@@ -4,7 +4,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 
 ## Funktionen
 
-- **📅 Kalender** – **Monatsansicht** und **Wochenansicht als Stundenraster (Mo–So, 08–21 Uhr)**: Posten mit Von–Bis-Uhrzeit erscheinen als Blöcke im Raster, Posten ohne feste Zeit in einer Leiste darüber. **Suche** (hebt Treffer-Tage hervor), **ICS-Import/-Export**, **Feiertage** und **Drag & Drop** (Tag und Uhrzeit).
+- **📅 Kalender** – **Monatsansicht** und **Wochenansicht als Stundenraster** (Zeitfenster & Standard-Blockdauer einstellbar): Posten mit Von–Bis-Uhrzeit erscheinen als Blöcke, Posten ohne feste Zeit in einer Leiste darüber. **Überschneidungs-Warnung** (sich zeitlich überlappende Blöcke stehen nebeneinander, markiert mit ⚠), **„Jetzt"-Linie**, **Suche**, **ICS-Import/-Export**, **Feiertage** und **Drag & Drop** (Tag und Uhrzeit). Druckbarer **Wochenplan**.
 - **➕ Ein Hinzufügen-Formular** – zwei Arten: **Aufgabe** (einem Modul zugeordnet, mit Von–Bis-Zeit und Link) oder **Prüfung** (Kalendertermin mit Wiederholung/Farbe). Aufgaben erscheinen zugleich in der Modul-Checkliste, im Kalender und in „Fokus heute".
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
@@ -14,7 +14,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **🗄️ Modul-Archiv** – die Modul-Abschnitte (In Bearbeitung / Demnächst / Abgeschlossen) sind einklappbar; „Abgeschlossen" startet eingeklappt.
 - **🎌 Feiertage** – bundesweite gesetzliche Feiertage werden im Kalender markiert (inkl. beweglicher wie Ostern/Pfingsten).
 - **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
-- **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich und **je Modul**, mit einstellbaren **Zielen**.
+- **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich, **je Modul** und optional **je Aufgabe**, mit einstellbaren **Zielen**.
 - **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben, mit **Schnelleingabe** zum direkten Hinzufügen einer Aufgabe für heute.
 - **📊 Noten je Semester** – Verlauf des ECTS-gewichteten Schnitts pro Semester mit Trend gegenüber dem Vorsemester (im Dashboard, ab zwei benoteten Semestern).
 - **🔗 Modul-Weblinks im Dashboard** – bei einem angehefteten Modul werden eingetragene Weblinks als anklickbare Chips auch unter „Aktuell in Bearbeitung" angezeigt.

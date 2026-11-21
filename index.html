@@ -134,31 +134,35 @@
       <div id="day-detail" class="day-detail"></div>
 
       <div class="event-form-wrap">
-        <h3>Eintrag hinzufügen</h3>
-        <form id="event-form" class="event-form">
-          <input type="date" id="event-date" required />
-          <input type="time" id="event-time" title="Uhrzeit (optional)" />
-          <input type="text" id="event-title" placeholder="z. B. Mathe-Prüfung" required />
-          <select id="event-type">
+        <h3>Hinzufügen</h3>
+        <form id="entry-form" class="event-form">
+          <select id="entry-kind" aria-label="Art des Eintrags" title="Aufgabe oder Prüfung">
+            <option value="task">Aufgabe</option>
             <option value="exam">Prüfung</option>
-            <option value="deadline">Abgabe</option>
-            <option value="lecture">Vorlesung</option>
-            <option value="other">Sonstiges</option>
           </select>
-          <select id="event-repeat" title="Wiederholung">
+          <input type="text" id="entry-title" placeholder="z. B. Vorlesung 3 ansehen" required aria-label="Bezeichnung" />
+          <input type="date" id="entry-date" required aria-label="Datum" />
+          <input type="time" id="entry-start" title="Von (optional)" aria-label="Startzeit" />
+          <input type="time" id="entry-end" title="Bis (optional)" aria-label="Endzeit" />
+          <input type="url" id="entry-url" placeholder="Link (optional)" aria-label="Link" />
+          <!-- Nur für Aufgaben: Modulzuordnung -->
+          <select id="entry-module" aria-label="Modul (für Aufgaben)" title="Modul"></select>
+          <!-- Nur für Prüfungen: Wiederholung, Serienende, Farbe -->
+          <select id="entry-repeat" title="Wiederholung" hidden>
             <option value="">Keine Wiederholung</option>
             <option value="daily">Täglich</option>
             <option value="weekly">Wöchentlich</option>
             <option value="biweekly">Alle 2 Wochen</option>
             <option value="monthly">Monatlich</option>
           </select>
-          <input type="date" id="event-repeat-until" title="Serie endet am (optional)" />
-          <label class="color-label" title="Eigene Farbe statt Typ-Standardfarbe">
-            <input type="checkbox" id="event-color-on" /> 🎨
-            <input type="color" id="event-color" value="#4f46e5" />
+          <input type="date" id="entry-repeat-until" title="Serie endet am (optional)" hidden />
+          <label class="color-label" id="entry-color-label" title="Eigene Farbe statt Typ-Standardfarbe" hidden>
+            <input type="checkbox" id="entry-color-on" /> 🎨
+            <input type="color" id="entry-color" value="#4f46e5" />
           </label>
           <button type="submit" class="primary-btn">Hinzufügen</button>
         </form>
+        <p id="entry-hint" class="muted entry-hint"></p>
       </div>
     </section>
 

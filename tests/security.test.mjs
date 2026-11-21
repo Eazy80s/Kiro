@@ -154,21 +154,39 @@ eq(clean.modules[0].links[1].url, "https://ilias.uni-x.de/goto.php?id=42", "migr
 eq(clean.modules[0].links[2].url, "https://moodle.hs.de/kurs", "migrate: Link ohne Schema wird zu https");
 eq(clean.schemaVersion, api.SCHEMA_VERSION, "migrate: schemaVersion wird auf aktuelle Version gesetzt");
 
-/* ---- migrate: Lernplan-Felder an Aufgaben (Typ + Link) ---- */
+/* ---- migrate v9: Aufgaben-Zeiten/Link + Aufräumen alter Felder ---- */
 {
   const d = api.migrate({
+    schemaVersion: 8,
     modules: [{ id: "m", name: "M", ects: 5, tasks: [
-      { id: "t1", text: "Alt-Aufgabe ohne Typ" },
-      { id: "t2", text: "Vorlesung", kind: "lecture", url: "vhb.org/kurs" },
-      { id: "t3", text: "Böser Link", kind: "quatsch", url: "javascript:alert(1)" },
+      // Alt-Aufgabe mit entfernten Feldern kind/pinned + gültige Zeit + Link ohne Schema
+      { id: "t1", text: "Vorlesung alt", kind: "lecture", pinned: true, startTime: "10:00", endTime: "11:30", url: "vhb.org/kurs" },
+      // Ungültige Zeiten + böser Link
+      { id: "t2", text: "Kaputt", startTime: "99:99", endTime: "abc", url: "javascript:alert(1)" },
     ] }],
   });
   const tasks = d.modules[0].tasks;
-  eq(tasks[0].kind, "task", "migrate: Aufgabe ohne Typ → 'task'");
-  eq(tasks[0].url, "", "migrate: fehlender Link → leer");
-  eq([tasks[1].kind, tasks[1].url], ["lecture", "https://vhb.org/kurs"], "migrate: Vorlesung + Link gehärtet (https ergänzt)");
-  eq(tasks[2].kind, "task", "migrate: unbekannter Typ fällt auf 'task' zurück");
-  eq(tasks[2].url, "", "migrate: javascript:-Link an Aufgabe wird verworfen");
+  eq(tasks[0].kind, undefined, "migrate v9: altes Feld 'kind' entfernt");
+  eq(tasks[0].pinned, undefined, "migrate v9: altes Feld 'pinned' entfernt");
+  eq([tasks[0].startTime, tasks[0].endTime], ["10:00", "11:30"], "migrate v9: gültige Von–Bis-Zeit bleibt");
+  eq(tasks[0].url, "https://vhb.org/kurs", "migrate v9: Link ohne Schema → https");
+  eq([tasks[1].startTime, tasks[1].endTime], [null, null], "migrate v9: ungültige Zeiten → null");
+  eq(tasks[1].url, "", "migrate v9: javascript:-Link verworfen");
+}
+
+/* ---- migrate v9: Events Zeit-Migration + Event-Typ 'lecture' entfällt ---- */
+{
+  const d = api.migrate({
+    events: [
+      // altes Einzelfeld time → startTime; Typ lecture → other
+      { id: "e1", date: "2026-11-20", time: "09:15", title: "Alt", type: "lecture" },
+      { id: "e2", date: "2026-11-21", startTime: "08:00", endTime: "09:30", title: "Neu", type: "exam" },
+    ],
+  });
+  eq([d.events[0].startTime, d.events[0].endTime], ["09:15", null], "migrate v9: event.time → startTime");
+  eq(d.events[0].time, undefined, "migrate v9: altes event.time entfernt");
+  eq(d.events[0].type, "other", "migrate v9: Event-Typ 'lecture' → 'other'");
+  eq([d.events[1].startTime, d.events[1].endTime], ["08:00", "09:30"], "migrate v9: Von–Bis bleibt");
 }
 
 /* ---- migrate ist defensiv bei Müll-Eingaben ---- */
@@ -233,9 +251,9 @@ const parseIcs = api.parseIcs;
   ].join("\r\n");
   const ev = parseIcs(ics);
   eq(ev.length, 2, "ICS-Import: Events ohne DTSTART werden verworfen (2 von 3)");
-  eq([ev[0].title, ev[0].date, ev[0].time], ["Analysis Vorlesung", "2026-11-24", "10:15"], "ICS-Import: Titel + Datum + Zeit");
+  eq([ev[0].title, ev[0].date, ev[0].startTime], ["Analysis Vorlesung", "2026-11-24", "10:15"], "ICS-Import: Titel + Datum + Startzeit");
   eq([ev[0].repeat, ev[0].repeatUntil], ["weekly", "2027-02-01"], "ICS-Import: RRULE FREQ=WEEKLY + UNTIL");
-  eq([ev[1].date, ev[1].time], ["2026-11-30", null], "ICS-Import: ganztägiges Datum ohne Zeit");
+  eq([ev[1].date, ev[1].startTime], ["2026-11-30", null], "ICS-Import: ganztägiges Datum ohne Zeit");
 }
 {
   // Zeilen-Folding (lange SUMMARY über zwei Zeilen) + INTERVAL=2 → biweekly.
@@ -246,14 +264,19 @@ const parseIcs = api.parseIcs;
 }
 eq(parseIcs("kein ics").length, 0, "ICS-Import: Nicht-ICS → leer");
 
-/* ---- Lernplan-Überblick (Vorlesungszählung) ---- */
-const ls = api.lecturesSummary;
-eq(ls({ tasks: [
-  { kind: "lecture", done: true }, { kind: "lecture", done: false },
-  { kind: "lecture", done: true }, { kind: "task", done: false },
-]}), { total: 3, done: 2, pct: 67 }, "Lernplan: 2 von 3 Vorlesungen (Aufgabe zählt nicht)");
-eq(ls({ tasks: [{ kind: "task", done: true }] }), { total: 0, done: 0, pct: 0 }, "Lernplan: keine Vorlesungen → total 0");
-eq(ls({ tasks: [] }), { total: 0, done: 0, pct: 0 }, "Lernplan: leeres Modul");
+/* ---- Uhrzeit-Helfer (Stundenraster-Wochenansicht) ---- */
+const nt = api.normalizeTime, tRange = api.timeRange, mot = api.minutesOfTime;
+eq(nt("9:05"), "09:05", "normalizeTime: führende Null ergänzt");
+eq(nt("23:59"), "23:59", "normalizeTime: gültige Zeit bleibt");
+eq(nt("24:00"), null, "normalizeTime: 24:00 ungültig");
+eq(nt("12:60"), null, "normalizeTime: Minute 60 ungültig");
+eq(nt("abc"), null, "normalizeTime: Unsinn → null");
+eq(nt(null), null, "normalizeTime: null → null");
+eq(tRange("09:00", "10:30"), "09:00–10:30", "timeRange: Von–Bis");
+eq(tRange("09:00", null), "09:00", "timeRange: nur Start");
+eq(tRange(null, "10:00"), "", "timeRange: ohne Start → leer");
+eq(mot("08:30"), 510, "minutesOfTime: 08:30 = 510 Min.");
+eq(mot(null), null, "minutesOfTime: null → null");
 
 /* ---- ECTS-Studienziel ---- */
 const ep = api.ectsProgress;

@@ -5,11 +5,11 @@
                  collapsed, gradeComponents:[comp], links:[link], tasks:[task] }
      comp:     { id, label, grade, weight }        // Teilnote (gewichtet)
      link:     { id, label, url }                  // url immer http(s) (sanitizeUrl)
-     task:     { id, text, done, pinned, date, kind, url, subtasks:[subtask] }
-                 // kind: "task" | "lecture" (Vorlesung); url: http(s) oder ""
+     task:     { id, text, done, date, startTime, endTime, url, subtasks:[subtask] }
+                 // startTime/endTime: "HH:MM" oder null; url: http(s) oder ""
      subtask:  { id, text, done }
-     event:    { id, date, time, title, type, repeat, repeatUntil, color }
-                 // color immer null oder echte Hex-Farbe (sanitizeHexColor)
+     event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color }
+                 // type: "exam" | "deadline" | "other"; color: null oder Hex (sanitizeHexColor)
    Separate Keys: Pomodoro-Zeiten, Lernstatistik (inkl. Ziele & Lernzeit je Modul), Theme.
 
    Sicherheit: Nutzerdaten werden beim Rendern mit escapeHtml maskiert; die
@@ -29,7 +29,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 let state = loadState();
 
@@ -44,6 +44,16 @@ function sanitizeHexColor(raw) {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s : null;
+}
+
+// Nur gültige "HH:MM" (24h) durchlassen, sonst null. Robust gegen Import/Sync.
+function normalizeTime(raw) {
+  if (typeof raw !== "string") return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw.trim());
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return String(h).padStart(2, "0") + ":" + m[2];
 }
 
 /* ---------- Persistence & migration ---------- */
@@ -78,14 +88,23 @@ function migrate(data) {
   // Beispiel für die Zukunft:
   //   if (from < 8) { data.modules.forEach((m) => { m.neuerName = m.alterName; delete m.alterName; }); }
   void from; // aktuell keine nicht-additiven Schritte nötig
-  // Events gain an optional time ("HH:MM" or null) and recurrence rule.
+  // Events: Von–Bis-Uhrzeit (startTime/endTime, je "HH:MM" oder null) + Wiederholung.
   data.events.forEach((e) => {
-    if (e.time === undefined) e.time = null;
+    // Migration altes Einzelfeld `time` → startTime; endTime bleibt zunächst leer.
+    if (e.startTime === undefined) e.startTime = normalizeTime(e.time) || null;
+    if (e.endTime === undefined) e.endTime = null;
+    delete e.time;
+    e.startTime = normalizeTime(e.startTime);
+    e.endTime = normalizeTime(e.endTime);
+    // Event-Typ „lecture" (alter Vorlesungs-Termin) entfällt → als „other" führen.
+    // Erlaubte Typen jetzt nur noch: exam | deadline | other.
+    if (e.type === "lecture") e.type = "other";
+    if (e.type !== "exam" && e.type !== "deadline" && e.type !== "other") e.type = "other";
     // repeat: null | "daily" | "weekly" | "biweekly" | "monthly" (ab e.date vorwärts)
     if (e.repeat === undefined) e.repeat = null;
     // optionales Enddatum einer Serie ("YYYY-MM-DD" oder null)
     if (e.repeatUntil === undefined) e.repeatUntil = null;
-    // optionale eigene Farbe (Hex) — überschreibt die Typ-Standardfarbe (Punkt 8).
+    // optionale eigene Farbe (Hex) — überschreibt die Typ-Standardfarbe.
     // Immer härten: nur echte Hex-Farben überleben (schützt vor style-Injection
     // aus importierten/gesyncten Daten, die später per innerHTML gerendert werden).
     e.color = sanitizeHexColor(e.color);
@@ -107,15 +126,17 @@ function migrate(data) {
     if (!Array.isArray(m.tasks)) m.tasks = [];
     m.tasks.forEach((t) => {
       if (typeof t.done !== "boolean") t.done = false;
-      if (typeof t.pinned !== "boolean") t.pinned = false;
       // Scheduled date (YYYY-MM-DD) or null. Drives Calendar + Today's Focus.
       if (t.date === undefined) t.date = null;
-      // Lernplan (Fernstudium): Typ der Einheit — "task" (Aufgabe) oder
-      // "lecture" (Vorlesung/Lerneinheit). Alt-Daten ohne Typ sind Aufgaben.
-      t.kind = (t.kind === "lecture") ? "lecture" : "task";
+      // Optionale Von–Bis-Uhrzeit (für den Stundenraster der Wochenansicht).
+      t.startTime = normalizeTime(t.startTime);
+      t.endTime = normalizeTime(t.endTime);
       // Optionaler eigener Link (z. B. zur Plattform-Aufzeichnung). Immer
       // härten: nur http(s) (schützt Import/Sync), sonst leer.
       t.url = sanitizeUrl(t.url) || "";
+      // Entfernte Felder aufräumen (v9): kind (Vorlesungs-Typ) und pinned (ungenutzt).
+      delete t.kind;
+      delete t.pinned;
       if (!Array.isArray(t.subtasks)) t.subtasks = [];
       t.subtasks.forEach((s) => { if (typeof s.done !== "boolean") s.done = false; });
     });
@@ -199,16 +220,6 @@ function computeGpa() {
   return { value: sum / graded.length, count: graded.length, weighted: false };
 }
 
-// Lernplan-Überblick je Modul: zählt Vorlesungen/Lerneinheiten und wie viele
-// davon erledigt sind. Reine Funktion → testbar.
-function lecturesSummary(module) {
-  const lectures = (module.tasks || []).filter((t) => t.kind === "lecture");
-  const done = lectures.filter((t) => t.done).length;
-  const total = lectures.length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return { total, done, pct };
-}
-
 // Noten je Semester: liefert pro Semester den ECTS-gewichteten Schnitt der
 // benoteten Module, chronologisch sortiert (SS vor WS, Jahr aufsteigend).
 // Reine Funktion (nimmt die Module als Argument) → gut testbar.
@@ -246,6 +257,13 @@ function todayIso() { return isoOf(new Date()); }
 function formatDate(iso) { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; }
 // Normalize a stored time to "HH:MM" or empty string.
 function formatTime(t) { return t ? t : ""; }
+// Sortier-/Positions-Key eines Postens: Startzeit oder "99:99" (ohne Zeit → ans Ende).
+function timeKey(item) { return item && item.startTime ? item.startTime : "99:99"; }
+// Anzeige der Von–Bis-Zeit: "09:00–10:30", "09:00" oder "" (keine Zeit).
+function timeRange(startTime, endTime) {
+  if (!startTime) return "";
+  return endTime ? `${startTime}–${endTime}` : startTime;
+}
 
 // Whole-day difference between two YYYY-MM-DD strings (b - a), date-only.
 function daysBetween(aIso, bIso) {
@@ -446,15 +464,20 @@ function buildIcs() {
   ];
   const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
   // 1) Kalendereinträge (inkl. Wiederholung als RRULE)
+  // Schreibt DTSTART/DTEND passend zur Von–Bis-Zeit (oder ganztägig).
+  const pushWhen = (date, startTime, endTime) => {
+    if (startTime) {
+      lines.push(`DTSTART:${icsDate(date, startTime)}`);
+      if (endTime && endTime > startTime) lines.push(`DTEND:${icsDate(date, endTime)}`);
+    } else {
+      lines.push(`DTSTART;VALUE=DATE:${icsDate(date)}`);
+    }
+  };
   state.events.forEach((e) => {
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${e.id}@studien-tracker`);
     lines.push(`DTSTAMP:${stamp}`);
-    if (e.time) {
-      lines.push(`DTSTART:${icsDate(e.date, e.time)}`);
-    } else {
-      lines.push(`DTSTART;VALUE=DATE:${icsDate(e.date)}`);
-    }
+    pushWhen(e.date, e.startTime, e.endTime);
     if (e.repeat && ICS_FREQ[e.repeat]) {
       let rule = `RRULE:FREQ=${ICS_FREQ[e.repeat]}`;
       if (e.repeat === "biweekly") rule += ";INTERVAL=2";
@@ -464,14 +487,14 @@ function buildIcs() {
     lines.push(`SUMMARY:${icsEscape(typeLabel(e.type) + ": " + e.title)}`);
     lines.push("END:VEVENT");
   });
-  // 2) terminierte Modulaufgaben (ganztägig)
+  // 2) terminierte Modulaufgaben (mit Von–Bis-Zeit, falls gesetzt; sonst ganztägig)
   state.modules.forEach((m) => {
     m.tasks.forEach((t) => {
       if (!t.date) return;
       lines.push("BEGIN:VEVENT");
       lines.push(`UID:task-${t.id}@studien-tracker`);
       lines.push(`DTSTAMP:${stamp}`);
-      lines.push(`DTSTART;VALUE=DATE:${icsDate(t.date)}`);
+      pushWhen(t.date, t.startTime, t.endTime);
       lines.push(`SUMMARY:${icsEscape("Aufgabe: " + t.text + " (" + m.name + ")")}`);
       lines.push("END:VEVENT");
     });
@@ -516,7 +539,7 @@ function parseIcs(text) {
   let cur = null;
   lines.forEach((line) => {
     const u = line.toUpperCase();
-    if (u === "BEGIN:VEVENT") { cur = { title: "", date: null, time: null, repeat: null, repeatUntil: null }; return; }
+    if (u === "BEGIN:VEVENT") { cur = { title: "", date: null, startTime: null, endTime: null, repeat: null, repeatUntil: null }; return; }
     if (u === "END:VEVENT") {
       if (cur && cur.date) events.push(cur);
       cur = null; return;
@@ -528,7 +551,8 @@ function parseIcs(text) {
     const key = rawKey.split(";")[0].toUpperCase();
     const val = line.slice(ci + 1);
     if (key === "SUMMARY") cur.title = icsUnescape(val).replace(/\n/g, " ").trim();
-    else if (key === "DTSTART") { const w = icsParseWhen(val); if (w) { cur.date = w.date; cur.time = w.time; } }
+    else if (key === "DTSTART") { const w = icsParseWhen(val); if (w) { cur.date = w.date; cur.startTime = w.time; } }
+    else if (key === "DTEND") { const w = icsParseWhen(val); if (w && w.time) cur.endTime = w.time; }
     else if (key === "RRULE") {
       const parts = {};
       val.split(";").forEach((p) => { const [k, v] = p.split("="); if (k) parts[k.toUpperCase()] = (v || "").toUpperCase(); });
@@ -698,7 +722,7 @@ function renderCountdown() {
   let nextExam = null, nextExamDate = null;
   state.events.filter((e) => e.type === "exam").forEach((e) => {
     const occ = nextOccurrence(e, today);
-    if (occ && (!nextExamDate || occ < nextExamDate || (occ === nextExamDate && (e.time || "99:99") < (nextExam.time || "99:99")))) {
+    if (occ && (!nextExamDate || occ < nextExamDate || (occ === nextExamDate && timeKey(e) < timeKey(nextExam)))) {
       nextExam = e; nextExamDate = occ;
     }
   });
@@ -710,7 +734,8 @@ function renderCountdown() {
   }
   const days = daysBetween(today, nextExamDate);
   const label = days === 0 ? "Heute!" : days === 1 ? "1 Tag" : `${days} Tage`;
-  const timePart = nextExam.time ? ` · ${formatTime(nextExam.time)} Uhr` : "";
+  const tr = timeRange(nextExam.startTime, nextExam.endTime);
+  const timePart = tr ? ` · ${tr} Uhr` : "";
   // ≤ 3 Tage → dringende, warme Darstellung
   card.className = "countdown-card" + (days <= 3 ? " urgent" : "");
   card.innerHTML = `
@@ -778,11 +803,10 @@ function renderOverdue() {
 
   const taskItems = overdueTasks.map(({ module, task, status }) => {
     const cbId = `ov-${task.id}`;
-    const kindBadge = task.kind === "lecture" ? `<span class="kind-badge lecture">${icon("play")} Vorlesung</span>` : "";
     return `<li class="focus-item">
       <div class="focus-main">
         <input type="checkbox" id="${cbId}" data-overdue-done="${task.id}" />
-        <span class="focus-text">${kindBadge}${escapeHtml(task.text)}
+        <span class="focus-text">${escapeHtml(task.text)}
           <span class="due-badge ${status.cls}">${status.label}</span></span>
         <span class="focus-mod">${escapeHtml(module.name)}</span>
       </div></li>`;
@@ -858,16 +882,16 @@ function renderPinnedTasks() {
       const subDone = task.subtasks.filter((s) => s.done).length;
       const subLabel = task.subtasks.length ? ` <span class="focus-sub-count">(${subDone}/${task.subtasks.length})</span>` : "";
 
-      const kindBadge = task.kind === "lecture"
-        ? `<span class="kind-badge lecture" title="Vorlesung / Lerneinheit">${icon("play")} Vorlesung</span>`
-        : "";
+      const tr = timeRange(task.startTime, task.endTime);
+      const timeBadge = tr ? `<span class="time-badge">${icon("clock")} ${tr}</span>` : "";
       const linkChip = task.url
         ? `<a class="task-link mod-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(task.url)}">${icon("link")} Öffnen</a>`
         : "";
       li.innerHTML = `
         <div class="focus-main">
           <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
-          <span class="focus-text ${task.done ? "done" : ""}">${kindBadge}${escapeHtml(task.text)}${subLabel}</span>
+          <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}${subLabel}</span>
+          ${timeBadge}
           ${linkChip}
         </div>
         <ul class="focus-subtasks"></ul>`;
@@ -945,7 +969,7 @@ const MONTHS = ["Januar","Februar","März","April","Mai","Juni",
   "Juli","August","September","Oktober","November","Dezember"];
 
 // German labels for event types (stored values stay English for compatibility).
-const TYPE_LABELS = { exam: "Prüfung", deadline: "Abgabe", lecture: "Vorlesung", other: "Sonstiges", task: "Aufgabe" };
+const TYPE_LABELS = { exam: "Prüfung", deadline: "Abgabe", other: "Sonstiges", task: "Aufgabe" };
 function typeLabel(t) { return TYPE_LABELS[t] || t; }
 
 function renderCalendar() {
@@ -1015,15 +1039,18 @@ function renderCalendar() {
     // itemRef trägt die Herkunft, damit ein Eintrag per Drag umterminiert werden kann.
     const dayItems = [];
     eventsOnDate(dateStr)
-      .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"))
+      .sort((a, b) => timeKey(a).localeCompare(timeKey(b)))
       .forEach((e) => {
-        const prefix = e.time ? `${formatTime(e.time)} ` : "";
+        const tr = timeRange(e.startTime, e.endTime);
+        const prefix = tr ? `${tr} ` : "";
         const rep = e.repeat ? " ↻" : "";
         dayItems.push({ type: e.type, label: `${prefix}${e.title}${rep}`, color: e.color || null, drag: { kind: "event", id: e.id } });
       });
-    // Scheduled module tasks on this day
-    tasksOnDate(dateStr).forEach(({ module, task }) => {
-      dayItems.push({ type: "task", label: `${task.text} · ${module.name}`, color: null, drag: { kind: "task", id: task.id } });
+    // Scheduled module tasks on this day (nach Startzeit, dann ohne Zeit)
+    tasksOnDate(dateStr).sort((a, b) => timeKey(a.task).localeCompare(timeKey(b.task))).forEach(({ module, task }) => {
+      const tr = timeRange(task.startTime, task.endTime);
+      const prefix = tr ? `${tr} ` : "";
+      dayItems.push({ type: "task", label: `${prefix}${task.text} · ${module.name}`, color: null, drag: { kind: "task", id: task.id } });
     });
     dayItems.slice(0, 3).forEach((it) => {
       const ev = document.createElement("div");
@@ -1054,8 +1081,24 @@ function renderCalendar() {
   renderDayDetail();
 }
 
-// Wochenansicht: 7 Tagesspalten (Mo–So) mit chronologisch sortierten Terminen
-// und geplanten Aufgaben. Die Woche richtet sich nach `selectedDate`.
+// Stundenraster der Wochenansicht: von WEEK_START_HOUR bis WEEK_END_HOUR.
+const WEEK_START_HOUR = 8;
+const WEEK_END_HOUR = 21;   // letzte beschriftete Stunde (Zeilen 08…21)
+const WEEK_HOURS = WEEK_END_HOUR - WEEK_START_HOUR + 1;
+const WEEK_ROW_PX = 44;     // Höhe einer Stundenzeile im Raster
+
+// "HH:MM" → Minuten seit Mitternacht (oder null).
+function minutesOfTime(t) {
+  const n = normalizeTime(t);
+  if (!n) return null;
+  const [h, m] = n.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Hybride Wochenansicht (Mo–So): oben eine „ohne feste Zeit"-Leiste, darunter ein
+// Stundenraster 08–21 Uhr. Posten MIT Uhrzeit werden als Von–Bis-Blöcke ins Raster
+// positioniert; Posten OHNE Uhrzeit landen in der Leiste. Events (Prüfungen/Sonstiges)
+// und geplante Modulaufgaben werden gleichermaßen angezeigt. Richtet sich nach `selectedDate`.
 function renderWeek() {
   const wrap = document.getElementById("calendar-week");
   if (!wrap) return;
@@ -1065,68 +1108,128 @@ function renderWeek() {
   const endD = new Date(start + "T00:00:00"); endD.setDate(endD.getDate() + 6);
   const today = todayIso();
   const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-
-  // Titel: Zeitraum der Woche.
   const fmtShort = (d) => `${d.getDate()}.${d.getMonth() + 1}.`;
   document.getElementById("calendar-title").textContent = `Woche ${fmtShort(startD)} – ${fmtShort(endD)} ${endD.getFullYear()}`;
   document.getElementById("selected-day-label").textContent =
     selectedDate ? `Ausgewählt: ${formatDate(selectedDate)}` : "";
 
-  wrap.innerHTML = "";
+  // Pro Tag die Posten einsammeln und in „mit Zeit" / „ohne Zeit" aufteilen.
+  const days = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(start + "T00:00:00"); d.setDate(d.getDate() + i);
     const iso = isoOf(d);
-    const dayEvents = eventsOnDate(iso).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
-    const dayTasks = tasksOnDate(iso);
-    const isMatch = calendarFilter && dayMatchesQuery(dayEvents, dayTasks, calendarFilter);
-    const isDimmed = calendarFilter && !isMatch;
-
-    const col = document.createElement("div");
-    col.className = "wk-col"
-      + (iso === today ? " today" : "")
-      + (iso === selectedDate ? " selected" : "")
-      + (isMatch ? " search-hit" : "")
-      + (isDimmed ? " search-dim" : "");
-    col.dataset.date = iso; // Drop-Ziel für Drag & Drop
-
-    const head = document.createElement("div");
-    head.className = "wk-head";
-    head.innerHTML = `<span class="wk-wd">${WD[i]}</span><span class="wk-num">${d.getDate()}.${d.getMonth() + 1}.</span>`;
-    head.addEventListener("click", () => { selectedDate = iso; renderCalendar(); });
-    col.appendChild(head);
-
-    const items = document.createElement("div");
-    items.className = "wk-items";
-    dayEvents.forEach((e) => {
-      const ev = document.createElement("div");
-      ev.className = `cal-event ${e.type}`;
-      const safeColor = sanitizeHexColor(e.color);
-      if (safeColor) ev.style.background = safeColor;
-      const prefix = e.time ? `${formatTime(e.time)} ` : "";
-      ev.textContent = `${prefix}${e.title}${e.repeat ? " ↻" : ""}`;
-      ev.title = ev.textContent + " — gedrückt halten und auf einen anderen Tag ziehen";
-      ev.dataset.dragKind = "event"; ev.dataset.dragId = e.id; ev.dataset.fromDate = iso;
-      makeDraggableCalEvent(ev);
-      items.appendChild(ev);
-    });
-    dayTasks.forEach(({ module, task }) => {
-      const ev = document.createElement("div");
-      ev.className = "cal-event task" + (task.done ? " done" : "");
-      ev.textContent = `${task.text} · ${module.name}`;
-      ev.title = ev.textContent + " — gedrückt halten und auf einen anderen Tag ziehen";
-      ev.dataset.dragKind = "task"; ev.dataset.dragId = task.id; ev.dataset.fromDate = iso;
-      makeDraggableCalEvent(ev);
-      items.appendChild(ev);
-    });
-    if (!dayEvents.length && !dayTasks.length) {
-      const empty = document.createElement("div");
-      empty.className = "wk-empty";
-      empty.textContent = "—";
-      items.appendChild(empty);
-    }
-    col.appendChild(items);
-    wrap.appendChild(col);
+    const items = [];
+    eventsOnDate(iso).forEach((e) => items.push({
+      kind: "event", id: e.id, type: e.type, title: e.title,
+      startTime: e.startTime, endTime: e.endTime, color: sanitizeHexColor(e.color),
+      repeat: e.repeat, done: false,
+    }));
+    tasksOnDate(iso).forEach(({ module, task }) => items.push({
+      kind: "task", id: task.id, type: "task", title: `${task.text} · ${module.name}`,
+      startTime: task.startTime, endTime: task.endTime, color: null, repeat: null, done: task.done,
+    }));
+    const isMatch = calendarFilter && dayMatchesQuery(eventsOnDate(iso), tasksOnDate(iso), calendarFilter);
+    days.push({ iso, d, items, isMatch, isDimmed: calendarFilter && !isMatch });
   }
+
+  const buildBlock = (it, iso, positioned) => {
+    const ev = document.createElement("div");
+    ev.className = `cal-event ${it.type}` + (it.done ? " done" : "") + (positioned ? " wk-block" : "");
+    if (it.color) ev.style.background = it.color;
+    const tr = timeRange(it.startTime, it.endTime);
+    ev.textContent = (tr && !positioned ? tr + " " : "") + it.title + (it.repeat ? " ↻" : "");
+    ev.title = (tr ? tr + " · " : "") + it.title + " — gedrückt halten und auf einen anderen Tag/Slot ziehen";
+    ev.dataset.dragKind = it.kind; ev.dataset.dragId = it.id; ev.dataset.fromDate = iso;
+    if (positioned) {
+      const startMin = minutesOfTime(it.startTime);
+      const top = ((startMin - WEEK_START_HOUR * 60) / 60) * WEEK_ROW_PX;
+      let endMin = minutesOfTime(it.endTime);
+      if (endMin == null || endMin <= startMin) endMin = startMin + 60; // Default 1 h
+      const height = Math.max(22, ((endMin - startMin) / 60) * WEEK_ROW_PX - 2);
+      ev.style.top = Math.max(0, top) + "px";
+      ev.style.height = height + "px";
+      ev.innerHTML = `<span class="wk-block-time">${escapeHtml(tr)}</span> ${escapeHtml(it.title)}${it.repeat ? " ↻" : ""}`;
+    }
+    makeDraggableCalEvent(ev);
+    return ev;
+  };
+
+  // --- Aufbau: Kopfzeile, Ganztags-Leiste, Stundenraster ---
+  wrap.innerHTML = "";
+  const colClass = (day) => "wk-col"
+    + (day.iso === today ? " today" : "")
+    + (day.iso === selectedDate ? " selected" : "")
+    + (day.isMatch ? " search-hit" : "")
+    + (day.isDimmed ? " search-dim" : "");
+
+  // Kopfzeile: Eck-Spalte (leer) + 7 Tagesköpfe.
+  const header = document.createElement("div");
+  header.className = "wk-grid-head";
+  header.appendChild(document.createElement("div")); // Eck-Zelle über der Zeitachse
+  days.forEach((day) => {
+    const h = document.createElement("div");
+    h.className = colClass(day) + " wk-colhead";
+    h.innerHTML = `<span class="wk-wd">${WD[day.d.getDay() === 0 ? 6 : day.d.getDay() - 1]}</span><span class="wk-num">${fmtShort(day.d)}</span>`;
+    h.addEventListener("click", () => { selectedDate = day.iso; renderCalendar(); });
+    header.appendChild(h);
+  });
+  wrap.appendChild(header);
+
+  // Ganztags-/„ohne Zeit"-Leiste: Eck-Label + 7 Tageszellen (Drop-Ziel = ganzer Tag).
+  const allday = document.createElement("div");
+  allday.className = "wk-allday";
+  const adLabel = document.createElement("div");
+  adLabel.className = "wk-allday-label";
+  adLabel.textContent = "ohne Zeit";
+  allday.appendChild(adLabel);
+  days.forEach((day) => {
+    const cell = document.createElement("div");
+    cell.className = colClass(day) + " wk-allday-cell";
+    cell.dataset.date = day.iso; // Drop ohne Uhrzeit
+    day.items.filter((it) => !it.startTime).forEach((it) => cell.appendChild(buildBlock(it, day.iso, false)));
+    allday.appendChild(cell);
+  });
+  wrap.appendChild(allday);
+
+  // Stundenraster: Zeitachse links + 7 Tagesspalten mit absoluten Blöcken.
+  const grid = document.createElement("div");
+  grid.className = "wk-grid";
+  grid.style.setProperty("--wk-rows", String(WEEK_HOURS));
+  grid.style.setProperty("--wk-row-px", WEEK_ROW_PX + "px");
+
+  const axis = document.createElement("div");
+  axis.className = "wk-axis";
+  for (let hh = WEEK_START_HOUR; hh <= WEEK_END_HOUR; hh++) {
+    const lab = document.createElement("div");
+    lab.className = "wk-hour-label";
+    lab.textContent = String(hh).padStart(2, "0") + ":00";
+    axis.appendChild(lab);
+  }
+  grid.appendChild(axis);
+
+  days.forEach((day) => {
+    const col = document.createElement("div");
+    col.className = colClass(day) + " wk-daycol";
+    col.dataset.date = day.iso;
+    col.dataset.slotted = "1"; // markiert Spalten mit Uhrzeit-Drop
+    // Stundenlinien
+    for (let r = 0; r < WEEK_HOURS; r++) {
+      const line = document.createElement("div");
+      line.className = "wk-hour-line";
+      line.dataset.date = day.iso;
+      line.dataset.hour = String(WEEK_START_HOUR + r);
+      col.appendChild(line);
+    }
+    // positionierte Blöcke (mit Uhrzeit, innerhalb des Rasterfensters)
+    day.items.filter((it) => it.startTime).forEach((it) => {
+      const startMin = minutesOfTime(it.startTime);
+      // Außerhalb 08–21 Uhr? Dann in die „ohne Zeit"-Leiste wäre verwirrend — wir
+      // klemmen den Block ans Raster (oben/unten), zeigen ihn aber mit echter Zeit.
+      col.appendChild(buildBlock(it, day.iso, true));
+    });
+    grid.appendChild(col);
+  });
+  wrap.appendChild(grid);
 
   renderDayDetail();
 }
@@ -1135,9 +1238,10 @@ function renderDayDetail() {
   const wrap = document.getElementById("day-detail");
   if (!selectedDate) { wrap.innerHTML = ""; return; }
   const dayEvents = eventsOnDate(selectedDate)
-    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99") || a.title.localeCompare(b.title));
+    .sort((a, b) => timeKey(a).localeCompare(timeKey(b)) || a.title.localeCompare(b.title));
 
-  const dayTasks = tasksOnDate(selectedDate);
+  const dayTasks = tasksOnDate(selectedDate)
+    .sort((a, b) => timeKey(a.task).localeCompare(timeKey(b.task)));
 
   let html = `<h3>${formatDate(selectedDate)}</h3>`;
 
@@ -1145,13 +1249,14 @@ function renderDayDetail() {
   if (holiday) html += `<p class="holiday-note">★ Feiertag: ${escapeHtml(holiday)} <span class="muted">(bundesweit)</span></p>`;
 
   if (!dayEvents.length && !dayTasks.length) {
-    html += `<p class="muted">Nichts geplant. Füge unten einen Kalendereintrag hinzu oder plane eine Modulaufgabe für diesen Tag.</p>`;
+    html += `<p class="muted">Nichts geplant. Füge unten etwas hinzu oder plane eine Modulaufgabe für diesen Tag.</p>`;
   }
 
   // Calendar events (recurring shown with a repeat note)
-  const REPEAT_LABELS = { daily: "täglich", weekly: "wöchentlich", monthly: "monatlich" };
+  const REPEAT_LABELS = { daily: "täglich", weekly: "wöchentlich", biweekly: "alle 2 Wochen", monthly: "monatlich" };
   dayEvents.forEach((e) => {
-    const timePart = e.time ? `<span class="d-time">${formatTime(e.time)} Uhr</span> ` : "";
+    const tr = timeRange(e.startTime, e.endTime);
+    const timePart = tr ? `<span class="d-time">${tr} Uhr</span> ` : "";
     const repPart = e.repeat ? ` <span class="repeat-badge">↻ ${REPEAT_LABELS[e.repeat] || ""}</span>` : "";
     const delTitle = e.repeat ? "Serie löschen" : "Löschen";
     // Farbe defensiv härten (Defense-in-Depth): nur echte Hex-Farben landen im
@@ -1167,8 +1272,8 @@ function renderDayDetail() {
 
   // Scheduled module tasks (planned work)
   dayTasks.forEach(({ module, task }) => {
-    const isLecture = task.kind === "lecture";
-    const tagLabel = isLecture ? "Vorlesung" : "Aufgabe";
+    const tr = timeRange(task.startTime, task.endTime);
+    const timePart = tr ? `<span class="d-time">${tr} Uhr</span> ` : "";
     const linkChip = task.url
       ? ` <a class="task-link mod-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(task.url)}">${icon("link")} Öffnen</a>`
       : "";
@@ -1176,8 +1281,8 @@ function renderDayDetail() {
       <div class="d-event d-task">
         <span class="d-left">
           <input type="checkbox" data-task-done="${task.id}" ${task.done ? "checked" : ""} />
-          <span class="tag ${isLecture ? "lecture" : "task"}">${tagLabel}</span>
-          <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>${linkChip}
+          <span class="tag task">Aufgabe</span>
+          ${timePart}<span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>${linkChip}
         </span>
         <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen" aria-label="Von diesem Tag entfernen">${icon("close")}</button>
       </div>`;
@@ -1249,7 +1354,8 @@ function renderDayDetail() {
   }
 
   // Pre-fill the add-entry date field with the selected day.
-  document.getElementById("event-date").value = selectedDate;
+  const entryDate = document.getElementById("entry-date");
+  if (entryDate) entryDate.value = selectedDate;
 }
 
 // Find a task object anywhere in the modules by id.
@@ -1359,28 +1465,44 @@ function attachLongPressDrag(el, opts) {
 // Kalendereintrag per Drag umterminieren (Event oder geplante Aufgabe).
 function makeDraggableCalEvent(ev) {
   attachLongPressDrag(ev, {
-    // Drop-Ziele in BEIDEN Ansichten: Monatszellen und Wochenspalten.
-    dropSelector: ".cal-cell[data-date], .wk-col[data-date]",
+    // Drop-Ziele: Monatszellen, Wochen-Tagesköpfe/Ganztagszellen (nur Datum) und
+    // Stundenlinien im Wochenraster (Datum + Uhrzeit).
+    dropSelector: ".cal-cell[data-date], .wk-allday-cell[data-date], .wk-colhead[data-date], .wk-hour-line[data-hour]",
     ghostText: () => ev.textContent,
-    onDrop: (cell) => {
-      const toDate = cell.dataset.date;
+    onDrop: (target) => {
+      const toDate = target.dataset.date;
       const fromDate = ev.dataset.fromDate;
-      if (!toDate || toDate === fromDate) return;
-      moveCalItem(ev.dataset.dragKind, ev.dataset.dragId, fromDate, toDate);
+      // Drop auf eine Stundenlinie → Datum UND Startzeit setzen.
+      const toHour = target.dataset.hour != null ? Number(target.dataset.hour) : null;
+      if (!toDate) return;
+      if (toDate === fromDate && toHour == null) return;
+      moveCalItem(ev.dataset.dragKind, ev.dataset.dragId, fromDate, toDate, toHour);
     },
   });
 }
 
-// Verschiebt einen Kalendereintrag auf ein neues Datum.
-function moveCalItem(kind, id, fromDate, toDate) {
+// Verschiebt einen Kalendereintrag auf ein neues Datum (und optional Startstunde).
+// Bei gesetzter Stunde wird die bisherige Dauer (Von–Bis) beibehalten.
+function moveCalItem(kind, id, fromDate, toDate, toHour) {
+  const applyHour = (obj) => {
+    if (toHour == null) return;
+    const oldStart = minutesOfTime(obj.startTime);
+    const oldEnd = minutesOfTime(obj.endTime);
+    const dur = (oldStart != null && oldEnd != null && oldEnd > oldStart) ? (oldEnd - oldStart) : 60;
+    obj.startTime = String(toHour).padStart(2, "0") + ":00";
+    const endMin = Math.min(24 * 60, toHour * 60 + dur);
+    const eh = Math.floor(endMin / 60), em = endMin % 60;
+    obj.endTime = String(eh).padStart(2, "0") + ":" + String(em).padStart(2, "0");
+  };
   if (kind === "task") {
     const t = findTaskById(id);
-    if (t) { t.date = toDate; saveState(); renderCalendar();
-      showSnackbar(`Aufgabe auf ${formatDate(toDate)} verschoben.`); }
+    if (t) { t.date = toDate; applyHour(t); saveState(); renderCalendar();
+      showSnackbar(`Aufgabe auf ${formatDate(toDate)}${toHour != null ? " " + t.startTime + " Uhr" : ""} verschoben.`); }
     return;
   }
   const e = state.events.find((x) => x.id === id);
   if (!e) return;
+  if (toHour != null && !e.repeat) applyHour(e);
   if (e.repeat) {
     // Wiederkehrende Einträge: ganze Serie verschieben (Startdatum), mit Rückfrage.
     const delta = daysBetween(e.date, toDate) - daysBetween(e.date, fromDate);
@@ -1477,7 +1599,7 @@ if (quickTaskForm) {
     const text = (textEl.value || "").trim();
     const mod = state.modules.find((m) => m.id === modSel.value);
     if (!text || !mod) { if (!state.modules.length) showSnackbar("Lege zuerst ein Modul an, dann kannst du Aufgaben hinzufügen."); return; }
-    mod.tasks.push({ id: uid(), text, done: false, pinned: false, date: todayIso(), kind: "task", url: "", subtasks: [] });
+    mod.tasks.push({ id: uid(), text, done: false, date: todayIso(), startTime: null, endTime: null, url: "", subtasks: [] });
     saveState();
     textEl.value = "";
     renderDashboard();
@@ -1486,29 +1608,82 @@ if (quickTaskForm) {
   });
 }
 
-document.getElementById("event-form").addEventListener("submit", (e) => {
+// Vereinheitlichtes Hinzufügen: ein Formular, zwei Arten (Aufgabe | Prüfung).
+// Aufgabe → Modul-Aufgabe (mit optionaler Von–Bis-Zeit, Link, Modulzuordnung).
+// Prüfung → Kalender-Event (mit Wiederholung, Serienende, Farbe).
+const entryKindSel = document.getElementById("entry-kind");
+function fillEntryModuleSelect() {
+  const sel = document.getElementById("entry-module");
+  if (!sel) return;
+  const prev = sel.value;
+  if (!state.modules.length) {
+    sel.innerHTML = `<option value="">Kein Modul — erst eins anlegen</option>`;
+  } else {
+    const ordered = state.modules.slice().sort((a, b) => (b.pinned - a.pinned) || (a.completed - b.completed));
+    sel.innerHTML = ordered.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+    if (ordered.some((m) => m.id === prev)) sel.value = prev;
+  }
+}
+// Felder je nach Art ein-/ausblenden.
+function updateEntryFormMode() {
+  const kind = entryKindSel ? entryKindSel.value : "task";
+  const isTask = kind === "task";
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+  show("entry-module", isTask);
+  show("entry-repeat", !isTask);
+  show("entry-repeat-until", !isTask);
+  show("entry-color-label", !isTask);
+  const title = document.getElementById("entry-title");
+  if (title) title.placeholder = isTask ? "z. B. Vorlesung 3 ansehen" : "z. B. Mathe-Klausur";
+  const hint = document.getElementById("entry-hint");
+  if (hint) hint.textContent = isTask
+    ? "Aufgaben erscheinen in der Checkliste des Moduls, im Kalender und in „Fokus heute“."
+    : "Prüfungen sind Kalendertermine (mit optionaler Wiederholung & Farbe).";
+}
+if (entryKindSel) entryKindSel.addEventListener("change", updateEntryFormMode);
+
+const entryForm = document.getElementById("entry-form");
+if (entryForm) entryForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  const date = document.getElementById("event-date").value;
-  const time = document.getElementById("event-time").value || null;
-  const title = document.getElementById("event-title").value.trim();
-  const type = document.getElementById("event-type").value;
-  const repeat = document.getElementById("event-repeat").value || null;
-  const repeatUntil = (repeat ? document.getElementById("event-repeat-until").value : "") || null;
-  const colorOn = document.getElementById("event-color-on").checked;
-  const color = colorOn ? sanitizeHexColor(document.getElementById("event-color").value) : null;
-  if (!date || !title) return;
-  state.events.push({ id: uid(), date, time, title, type, repeat, repeatUntil, color });
+  const kind = document.getElementById("entry-kind").value;
+  const title = document.getElementById("entry-title").value.trim();
+  const date = document.getElementById("entry-date").value;
+  const startTime = normalizeTime(document.getElementById("entry-start").value);
+  let endTime = normalizeTime(document.getElementById("entry-end").value);
+  if (startTime && endTime && endTime <= startTime) endTime = null; // Bis vor Von → verwerfen
+  const urlRaw = document.getElementById("entry-url").value;
+  const url = sanitizeUrl(urlRaw) || "";
+  if (urlRaw.trim() && !url) { showSnackbar("Ungültiger Link — bitte eine gültige Web-URL eingeben."); return; }
+  if (!title || !date) return;
+
+  if (kind === "task") {
+    const modSel = document.getElementById("entry-module");
+    const mod = state.modules.find((m) => m.id === modSel.value);
+    if (!mod) { showSnackbar("Bitte ein Modul wählen (oder zuerst eins anlegen)."); return; }
+    mod.tasks.push({ id: uid(), text: title, done: false, date, startTime, endTime, url, subtasks: [] });
+  } else {
+    const repeat = document.getElementById("entry-repeat").value || null;
+    const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
+    const colorOn = document.getElementById("entry-color-on").checked;
+    const color = colorOn ? sanitizeHexColor(document.getElementById("entry-color").value) : null;
+    state.events.push({ id: uid(), date, startTime, endTime, title, type: "exam", repeat, repeatUntil, color });
+  }
   saveState();
   selectedDate = date;
   const d = new Date(date + "T00:00:00");
   calYear = d.getFullYear();
   calMonth = d.getMonth();
-  document.getElementById("event-title").value = "";
-  document.getElementById("event-time").value = "";
-  document.getElementById("event-repeat").value = "";
-  document.getElementById("event-repeat-until").value = "";
-  document.getElementById("event-color-on").checked = false;
+  // Formular zurücksetzen (Art + Datum behalten für schnelle Mehrfacheingabe).
+  document.getElementById("entry-title").value = "";
+  document.getElementById("entry-start").value = "";
+  document.getElementById("entry-end").value = "";
+  document.getElementById("entry-url").value = "";
+  document.getElementById("entry-repeat").value = "";
+  document.getElementById("entry-repeat-until").value = "";
+  document.getElementById("entry-color-on").checked = false;
   renderCalendar();
+  renderModules();
+  renderDashboard();
 });
 
 /* ============================================================
@@ -1643,8 +1818,9 @@ function renderModules() {
 }
 
 function renderModulesRaw() {
-  fillPomoModuleSelect(); // Modul-Auswahl beim Timer aktuell halten
-  fillSemesterFilter();   // Semesterfilter aktuell halten
+  fillPomoModuleSelect();   // Modul-Auswahl beim Timer aktuell halten
+  fillEntryModuleSelect();  // Modul-Auswahl im Hinzufügen-Formular aktuell halten
+  fillSemesterFilter();     // Semesterfilter aktuell halten
 
   const wrap = document.getElementById("modules-list");
   wrap.innerHTML = "";
@@ -1736,19 +1912,6 @@ function sanitizeUrl(raw) {
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) return null;
     return u.href;
   } catch (e) { return null; }
-}
-
-// Lernplan-Überblick in der Modulkarte: kompakter Vorlesungs-Fortschritt.
-// Zeigt sich nur, wenn das Modul überhaupt Vorlesungen enthält.
-function renderLectureOverview(wrap, m) {
-  if (!wrap) return;
-  const s = lecturesSummary(m);
-  if (!s.total) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `
-    <div class="lecture-overview">
-      <span class="lecture-label">${icon("play")} Vorlesungen: <strong>${s.done}/${s.total}</strong> angesehen</span>
-      <div class="lecture-bar"><div class="lecture-fill" style="width:${s.pct}%"></div></div>
-    </div>`;
 }
 
 // Chips mit anklickbaren Modul-Links (Anzeige in der Modulkarte).
@@ -1871,7 +2034,6 @@ function renderModuleCard(m) {
       </div>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-    <div class="mod-lectures"></div>
     <div class="mod-links"></div>
     <div class="module-body">
       <div class="module-controls">
@@ -1897,9 +2059,6 @@ function renderModuleCard(m) {
   const gc = card.querySelector(".grade-components");
   renderGradeComponents(gc, m);
 
-  // Lernplan-Überblick (Vorlesungs-Fortschritt)
-  renderLectureOverview(card.querySelector(".mod-lectures"), m);
-
   // Modul-Links: anklickbare Chips + Editor
   renderModuleLinks(card.querySelector(".mod-links"), m);
   renderLinkEditor(card.querySelector(".link-editor"), m);
@@ -1916,12 +2075,9 @@ function renderModuleCard(m) {
     const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
     const ds = (t.date && !t.done) ? dueStatus(t.date) : null;
     const dueBadge = ds ? `<span class="due-badge ${ds.cls}">${ds.label}</span>` : "";
-    const isLecture = t.kind === "lecture";
-    if (isLecture) li.classList.add("lecture");
-    // Typ-Badge (Vorlesung/Aufgabe) vor dem Text.
-    const kindBadge = isLecture
-      ? `<span class="kind-badge lecture" title="Vorlesung / Lerneinheit">${icon("play")} Vorlesung</span>`
-      : "";
+    // Uhrzeit-Badge (Von–Bis), falls gesetzt.
+    const tr = timeRange(t.startTime, t.endTime);
+    const timeBadge = tr ? `<span class="time-badge">${icon("clock")} ${tr}</span>` : "";
     // Anklickbarer Link-Chip, falls ein Link hinterlegt ist (öffnet die Plattform).
     const linkChip = t.url
       ? `<a class="task-link mod-link" href="${escapeHtml(t.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t.url)}">${icon("link")} Öffnen</a>`
@@ -1930,20 +2086,17 @@ function renderModuleCard(m) {
     li.innerHTML = `
       <div class="task-row">
         <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
-        <label for="${cbId}" class="${t.done ? "done" : ""}">${kindBadge}${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+        <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+        ${timeBadge}
         ${dueBadge}
         ${linkChip}
         <input type="date" class="task-date" data-date value="${t.date || ""}" title="Terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum von ${escapeHtml(t.text)}" />
-        <button class="icon-btn task-opts-btn" data-task-opts title="Typ & Link bearbeiten" aria-label="Typ und Link von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
+        <button class="icon-btn task-opts-btn" data-task-opts title="Uhrzeit & Link bearbeiten" aria-label="Uhrzeit und Link von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
         <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="${escapeHtml(t.text)} löschen">${icon("close")}</button>
       </div>
       <div class="task-opts" hidden>
-        <label class="task-opt">Typ:
-          <select data-task-kind aria-label="Typ von ${escapeHtml(t.text)}">
-            <option value="task"${!isLecture ? " selected" : ""}>Aufgabe</option>
-            <option value="lecture"${isLecture ? " selected" : ""}>Vorlesung</option>
-          </select>
-        </label>
+        <label class="task-opt">Von <input type="time" data-task-start value="${t.startTime || ""}" aria-label="Startzeit von ${escapeHtml(t.text)}" /></label>
+        <label class="task-opt">Bis <input type="time" data-task-end value="${t.endTime || ""}" aria-label="Endzeit von ${escapeHtml(t.text)}" /></label>
         <label class="task-opt task-opt-url">Link:
           <input type="url" data-task-url placeholder="https://… (Plattform/Aufzeichnung)" value="${escapeHtml(t.url || "")}" aria-label="Link von ${escapeHtml(t.text)}" />
         </label>
@@ -2008,15 +2161,19 @@ function renderModuleCard(m) {
       });
     });
 
-    // Typ & Link ein-/ausblenden (kleiner Editor pro Aufgabe).
+    // Uhrzeit & Link ein-/ausblenden (kleiner Editor pro Aufgabe).
     const optsBox = li.querySelector(".task-opts");
     li.querySelector("[data-task-opts]").addEventListener("click", () => {
       optsBox.hidden = !optsBox.hidden;
-      if (!optsBox.hidden) { const u = optsBox.querySelector("[data-task-url]"); if (u) u.focus(); }
+      if (!optsBox.hidden) { const u = optsBox.querySelector("[data-task-start]"); if (u) u.focus(); }
     });
-    // Typ wechseln (Aufgabe ⇄ Vorlesung).
-    li.querySelector("[data-task-kind]").addEventListener("change", (ev) => {
-      t.kind = ev.target.value === "lecture" ? "lecture" : "task";
+    // Von–Bis-Uhrzeit setzen (für den Stundenraster der Wochenansicht).
+    li.querySelector("[data-task-start]").addEventListener("change", (ev) => {
+      t.startTime = normalizeTime(ev.target.value);
+      saveState(); renderModules();
+    });
+    li.querySelector("[data-task-end]").addEventListener("change", (ev) => {
+      t.endTime = normalizeTime(ev.target.value);
       saveState(); renderModules();
     });
     // Link setzen/entfernen — nur sichere http(s)-URLs (wie bei den Modul-Links).
@@ -2064,7 +2221,7 @@ function renderModuleCard(m) {
     const input = ev.target.querySelector("input");
     const text = input.value.trim();
     if (!text) return;
-    m.tasks.push({ id: uid(), text, done: false, pinned: false, date: null, kind: "task", url: "", subtasks: [] });
+    m.tasks.push({ id: uid(), text, done: false, date: null, startTime: null, endTime: null, url: "", subtasks: [] });
     saveState(); renderModules();
   });
 
@@ -2709,7 +2866,7 @@ if (icsImportEl) {
         let added = 0;
         parsed.forEach((p) => {
           state.events.push({
-            id: uid(), date: p.date, time: p.time || null,
+            id: uid(), date: p.date, startTime: p.startTime || null, endTime: p.endTime || null,
             title: p.title || "(ohne Titel)", type: "other",
             repeat: p.repeat || null, repeatUntil: p.repeatUntil || null, color: null,
           });
@@ -2870,7 +3027,8 @@ function checkReminders() {
   });
   if (!due.length) return;
   due.forEach((e) => {
-    const when = e.time ? ` um ${formatTime(e.time)} Uhr` : "";
+    const tr = timeRange(e.startTime, e.endTime);
+    const when = tr ? ` um ${tr} Uhr` : "";
     showAppNotification(`Heute: ${typeLabel(e.type)}`, `${e.title}${when}`, e.id);
   });
   markNotified(already.concat(due.map((e) => e.id)));
@@ -3000,9 +3158,9 @@ function loadSampleData() {
   state = migrate({
     modules: [
       { id: uid(), name: "Lineare Algebra", ects: 9, grade: null, targetGrade: 2.0, semester: "WS 2026/27", pinned: true, tasks: [
-        { id: uid(), text: "Vorlesung 1 ansehen", done: true, kind: "lecture", url: "https://www.example.com/vorlesung-1", subtasks: [] },
-        { id: uid(), text: "Vorlesung 2 ansehen", done: false, date: inDays(1), kind: "lecture", url: "https://www.example.com/vorlesung-2", subtasks: [] },
-        { id: uid(), text: "Übungsblatt 2", done: false, date: inDays(2), kind: "task", subtasks: [
+        { id: uid(), text: "Vorlesung 1 ansehen", done: true, url: "https://www.example.com/vorlesung-1", subtasks: [] },
+        { id: uid(), text: "Vorlesung 2 ansehen", done: false, date: inDays(1), startTime: "10:00", endTime: "11:30", url: "https://www.example.com/vorlesung-2", subtasks: [] },
+        { id: uid(), text: "Übungsblatt 2", done: false, date: inDays(2), subtasks: [
           { id: uid(), text: "Aufgabe 1", done: false }, { id: uid(), text: "Aufgabe 2", done: false } ] },
       ] },
       { id: uid(), name: "Programmierung", ects: 6, grade: 1.7, targetGrade: 2.0, semester: "WS 2026/27", completed: true, tasks: [] },
@@ -3010,9 +3168,8 @@ function loadSampleData() {
         { id: uid(), text: "Kapitel 1 lesen", done: false, date: inDays(-1), subtasks: [] } ] },
     ],
     events: [
-      { id: uid(), date: inDays(7), time: "09:00", title: "LA-Klausur", type: "exam", repeat: null, repeatUntil: null },
-      { id: uid(), date: inDays(3), time: null, title: "Abgabe Übungsblatt", type: "deadline", repeat: null, repeatUntil: null },
-      { id: uid(), date: inDays(1), time: "10:15", title: "Statistik-Vorlesung", type: "lecture", repeat: "weekly", repeatUntil: null },
+      { id: uid(), date: inDays(7), startTime: "09:00", endTime: "11:00", title: "LA-Klausur", type: "exam", repeat: null, repeatUntil: null },
+      { id: uid(), date: inDays(3), startTime: null, endTime: null, title: "Abgabe Übungsblatt", type: "deadline", repeat: null, repeatUntil: null },
     ],
   });
   saveState();
@@ -3414,8 +3571,8 @@ function renderAgenda() {
   let d = new Date(today + "T00:00:00");
   for (let i = 0; i < 7; i++) {
     const iso = isoOf(d);
-    eventsOnDate(iso).forEach((e) => week.push({ iso, time: e.time, kind: e.type, text: e.title }));
-    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) week.push({ iso, time: null, kind: "task", text: `${task.text} · ${module.name}` }); });
+    eventsOnDate(iso).forEach((e) => week.push({ iso, time: e.startTime, kind: e.type, text: e.title }));
+    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) week.push({ iso, time: task.startTime, kind: "task", text: `${task.text} · ${module.name}` }); });
     d.setDate(d.getDate() + 1);
   }
   week.sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99")));
@@ -3429,9 +3586,9 @@ function renderAgenda() {
     if (date && date > horizonIso) later.push({ e, date });
   });
   state.modules.forEach((m) => m.tasks.forEach((t) => {
-    if (t.date && !t.done && t.date > horizonIso) later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, time: null }, date: t.date });
+    if (t.date && !t.done && t.date > horizonIso) later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, startTime: t.startTime }, date: t.date });
   }));
-  later.sort((a, b) => (a.date + (a.e.time || "99:99")).localeCompare(b.date + (b.e.time || "99:99")));
+  later.sort((a, b) => (a.date + (a.e.startTime || "99:99")).localeCompare(b.date + (b.e.startTime || "99:99")));
   const laterTop = later.slice(0, 5);
 
   let html = "";
@@ -3445,7 +3602,7 @@ function renderAgenda() {
   }
   if (laterTop.length) {
     html += `<li class="agenda-section">Später</li>`;
-    html += laterTop.map(({ e, date }) => row(date, e.time, e.type, e.title)).join("");
+    html += laterTop.map(({ e, date }) => row(date, e.startTime, e.type, e.title)).join("");
   }
   wrap.innerHTML = html;
 }
@@ -3457,6 +3614,8 @@ fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
 fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
 fillEctsTarget();            // Studienziel (ECTS)
 fillCreateSemester();        // Semester-Dropdown im „Modul hinzufügen“-Formular
+fillEntryModuleSelect();     // Modul-Auswahl im vereinheitlichten Hinzufügen-Formular
+updateEntryFormMode();       // Felder je nach Art (Aufgabe/Prüfung) ein-/ausblenden
 renderDashboard();
 renderModules();             // damit Suche/Picker initial stimmen
 pomoFillSettings();
@@ -3477,8 +3636,8 @@ if (typeof module !== "undefined" && module.exports) {
     taskCompletion, moduleProgress, overallProgress, computeGpa,
     isPassingGrade, formatDuration, escapeHtml, sanitizeUrl, sanitizeHexColor,
     migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
-    parseIcs, buildIcs, lecturesSummary, ectsProgress, easterSunday,
-    germanHolidays, holidayName,
+    parseIcs, buildIcs, ectsProgress, easterSunday,
+    germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
   };
 }
 

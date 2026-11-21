@@ -4,12 +4,12 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 
 ## Funktionen
 
-- **📅 Kalender** – Einträge (Prüfung, Abgabe, Vorlesung, Sonstiges) mit optionaler **Uhrzeit** und **Wiederholung** (täglich/wöchentlich/monatlich). Modulaufgaben lassen sich auf Tage planen. **Monats- und Wochenansicht**, **Suche** (hebt Treffer-Tage hervor) und **ICS-Import** (Termine aus einem Uni-/Fremdkalender einlesen).
+- **📅 Kalender** – **Monatsansicht** und **Wochenansicht als Stundenraster (Mo–So, 08–21 Uhr)**: Posten mit Von–Bis-Uhrzeit erscheinen als Blöcke im Raster, Posten ohne feste Zeit in einer Leiste darüber. **Suche** (hebt Treffer-Tage hervor), **ICS-Import/-Export**, **Feiertage** und **Drag & Drop** (Tag und Uhrzeit).
+- **➕ Ein Hinzufügen-Formular** – zwei Arten: **Aufgabe** (einem Modul zugeordnet, mit Von–Bis-Zeit und Link) oder **Prüfung** (Kalendertermin mit Wiederholung/Farbe). Aufgaben erscheinen zugleich in der Modul-Checkliste, im Kalender und in „Fokus heute".
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
-- **🎥 Lernplan (Fernstudium)** – jede Checklisten-Einheit kann als **Vorlesung** oder **Aufgabe** markiert werden und einen eigenen **Link** zur Plattform/Aufzeichnung tragen (anklickbar, sichere http(s)-URL). So wird die Checkliste zum flexiblen, selbst terminierten Lernplan — die Einträge erscheinen mit Typ und Link auch in „Fokus heute" und im Kalender.
+- **🎥 Lernplan (Fernstudium)** – jede Aufgabe kann eine **Von–Bis-Uhrzeit** und einen eigenen **Link** zur Plattform/Aufzeichnung tragen (anklickbar, sichere http(s)-URL). Zeitlich variable Vorlesungen erfasst du so einfach als terminierte Aufgabe mit Uhrzeit und Link — sie erscheinen als Block im Wochen-Stundenraster.
 - **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul. Optionales **ECTS-Studienziel** (z. B. 180) mit Fortschrittsanzeige „erreicht / Ziel".
-- **🎥 Lernplan-Überblick** – je Modul ein kompakter Vorlesungs-Fortschritt („x/y angesehen").
 - **⚠️ Aufmerksamkeit** – überfällige Aufgaben **und** überfällige Prüfungen/Abgaben gebündelt im Dashboard.
 - **🗄️ Modul-Archiv** – die Modul-Abschnitte (In Bearbeitung / Demnächst / Abgeschlossen) sind einklappbar; „Abgeschlossen" startet eingeklappt.
 - **🎌 Feiertage** – bundesweite gesetzliche Feiertage werden im Kalender markiert (inkl. beweglicher wie Ostern/Pfingsten).

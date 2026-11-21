@@ -220,6 +220,17 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .module-progress-item .progress-label { font-weight: 500; font-size: 0.9rem; }
 .module-progress-item .meta { color: var(--muted); font-size: 0.76rem; font-weight: 400; }
 
+/* Schnelleingabe „Fokus heute“ */
+.quick-task-form { display: flex; gap: 6px; margin-bottom: 10px; }
+.quick-task-form input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.quick-task-form select { flex: 0 1 38%; min-width: 0; }
+.quick-task-form .primary-btn { flex: 0 0 auto; padding-left: 14px; padding-right: 14px; }
+@media (max-width: 520px) {
+  .quick-task-form { flex-wrap: wrap; }
+  .quick-task-form input[type="text"] { flex-basis: 100%; }
+  .quick-task-form select { flex: 1 1 auto; }
+}
+
 /* Today's focus list */
 .focus-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .focus-list li {
@@ -333,6 +344,14 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 [data-theme="dark"] .cal-cell.selected { background: rgba(129,140,248,0.18); }
 .cal-cell .day-num { font-weight: 600; color: var(--muted); }
 .cal-cell.today .day-num { color: var(--accent); }
+/* Kalender-Suche: Treffer-Tage hervorheben, übrige abdunkeln */
+.calendar-search {
+  width: 100%; margin-bottom: 14px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 0.9rem;
+}
+.cal-cell.search-hit { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.35); }
+.cal-cell.search-dim { opacity: 0.4; }
 .cal-event {
   font-size: 0.66rem;
   padding: 2px 5px;
@@ -832,6 +851,9 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .mod-link:hover { border-color: var(--accent); }
 .mod-link .ic { width: 0.9em; height: 0.9em; flex: 0 0 auto; }
 .mod-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Weblink-Chips im Dashboard unter einem angehefteten Modul */
+.pinned-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pinned-links:empty { display: none; }
 
 /* Eingeklapptes Modul: Links kompakt unter der Zeile */
 .module-card.collapsed .mod-links { margin: 6px 0 0; }
@@ -842,3 +864,61 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .lk-row { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
 .lk-label { flex: 0 0 34%; min-width: 110px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
 .lk-url { flex: 1; min-width: 150px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
+
+/* ============================================================
+   Noten je Semester (Dashboard-Verlauf)
+   ============================================================ */
+.semester-stats { display: flex; flex-direction: column; gap: 10px; }
+.sem-row { display: flex; flex-direction: column; gap: 4px; }
+.sem-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sem-name { font-weight: 600; font-size: 0.9rem; }
+.sem-avg { font-size: 0.85rem; color: var(--text); white-space: nowrap; }
+.sem-meta { color: var(--muted); font-size: 0.76rem; }
+.sem-bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.sem-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+.sem-fill.excellent { background: #16a34a; }
+.sem-fill.good { background: #65a30d; }
+.sem-fill.ok { background: #d97706; }
+.sem-fill.weak { background: var(--danger); }
+.sem-trend { font-size: 0.78rem; font-weight: 600; margin-left: 4px; }
+.sem-trend.up { color: #16a34a; }
+.sem-trend.down { color: var(--danger); }
+.sem-trend.flat { color: var(--muted); }
+
+/* ============================================================
+   Kalender: Monats-/Wochen-Umschalter + Wochenansicht
+   ============================================================ */
+.cal-view-toggle { display: inline-flex; gap: 4px; }
+.cal-view-toggle .ghost-btn { padding: 4px 12px; font-size: 0.82rem; }
+.cal-view-toggle .ghost-btn.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+
+.calendar-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.wk-col {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; min-height: 140px; display: flex; flex-direction: column;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.wk-col.today { border-color: var(--accent); }
+.wk-col.selected { background: #eef2ff; border-color: var(--accent); }
+[data-theme="dark"] .wk-col.selected { background: rgba(129,140,248,0.18); }
+.wk-col.search-hit { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.35); }
+.wk-col.search-dim { opacity: 0.4; }
+.wk-head {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.wk-head:hover { background: var(--surface-2); }
+.wk-wd { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.wk-num { font-size: 0.8rem; font-weight: 600; }
+.wk-col.today .wk-num { color: var(--accent); }
+.wk-items { display: flex; flex-direction: column; gap: 4px; padding: 6px 5px; flex: 1; }
+.wk-items .cal-event { white-space: normal; font-size: 0.68rem; }
+.wk-items .cal-event.done { text-decoration: line-through; opacity: 0.6; }
+.wk-empty { color: var(--muted); text-align: center; font-size: 0.8rem; margin-top: 8px; }
+
+@media (max-width: 640px) {
+  /* Auf schmalen Geräten: Wochenansicht als scrollbare Spalten */
+  .calendar-week { grid-template-columns: repeat(7, minmax(90px, 1fr)); overflow-x: auto; }
+}

@@ -177,5 +177,57 @@ eq(SD(300, 400, 100, true), "conflict", "Sync: Remote neuer + Lokal-Edit → con
 // sondern Server übernehmen — sonst würde jeder Erstabgleich fälschlich fragen.
 eq(SD(300, 400, 0, true), "apply", "Sync: Remote neuer, noch nie gesynct → apply (kein Fehlalarm)");
 
+/* ---- Noten je Semester (Dashboard-Verlauf) ---- */
+const gbs = api.gradesBySemester;
+{
+  // SS26 (2,0@6 + 3,0@6 → gewichtet 2,5), WS26 (1,0@6), ohne Semester (4,0),
+  // unbenotetes Modul wird ignoriert. Reihenfolge: SS26 vor WS26 vor „Ohne Semester".
+  const rows = gbs([
+    { grade: 2.0, ects: 6, semester: "SS26" },
+    { grade: 3.0, ects: 6, semester: "SS26" },
+    { grade: 1.0, ects: 6, semester: "WS26" },
+    { grade: 4.0, ects: 0, semester: null },
+    { grade: null, ects: 6, semester: "SS26" },
+  ]);
+  eq(rows.map((r) => r.semester), ["SS26", "WS26", "Ohne Semester"], "Semester-Noten: Reihenfolge SS→WS→ohne");
+  eq(Number(rows[0].avg.toFixed(2)), 2.5, "Semester-Noten: SS26 gewichtet = 2,5");
+  eq(rows[0].count, 2, "Semester-Noten: SS26 zählt 2 benotete Module");
+  eq(gbs([{ grade: null, ects: 6, semester: "SS26" }]), [], "Semester-Noten: ohne Noten → leer");
+}
+
+/* ---- Kalender-Suche: Treffer an einem Tag ---- */
+const dmq = api.dayMatchesQuery;
+eq(dmq([{ title: "Mathe-Klausur" }], [], "klausur"), true, "Kalendersuche: Event-Titel trifft");
+eq(dmq([], [{ task: { text: "Übungsblatt 2" }, module: { name: "Lineare Algebra" } }], "algebra"), true, "Kalendersuche: Modulname der Aufgabe trifft");
+eq(dmq([{ title: "Vorlesung" }], [], "prüfung"), false, "Kalendersuche: kein Treffer");
+eq(dmq([{ title: "X" }], [], ""), false, "Kalendersuche: leerer Begriff → kein Treffer");
+
+/* ---- ICS-Import (Parser) ---- */
+const parseIcs = api.parseIcs;
+{
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "BEGIN:VEVENT", "UID:abc@uni", "SUMMARY:Analysis Vorlesung",
+    "DTSTART;TZID=Europe/Berlin:20261124T101500",
+    "RRULE:FREQ=WEEKLY;UNTIL=20270201T000000", "END:VEVENT",
+    "BEGIN:VEVENT", "SUMMARY:Abgabe Blatt 1", "DTSTART;VALUE=DATE:20261130", "END:VEVENT",
+    "BEGIN:VEVENT", "SUMMARY:Ohne Datum", "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const ev = parseIcs(ics);
+  eq(ev.length, 2, "ICS-Import: Events ohne DTSTART werden verworfen (2 von 3)");
+  eq([ev[0].title, ev[0].date, ev[0].time], ["Analysis Vorlesung", "2026-11-24", "10:15"], "ICS-Import: Titel + Datum + Zeit");
+  eq([ev[0].repeat, ev[0].repeatUntil], ["weekly", "2027-02-01"], "ICS-Import: RRULE FREQ=WEEKLY + UNTIL");
+  eq([ev[1].date, ev[1].time], ["2026-11-30", null], "ICS-Import: ganztägiges Datum ohne Zeit");
+}
+{
+  // Zeilen-Folding (lange SUMMARY über zwei Zeilen) + INTERVAL=2 → biweekly.
+  const ics = "BEGIN:VEVENT\r\nSUMMARY:Sehr langer\r\n  Titel\r\nDTSTART:20261201\r\nRRULE:FREQ=WEEKLY;INTERVAL=2\r\nEND:VEVENT";
+  const ev = parseIcs(ics);
+  eq(ev[0].title, "Sehr langer Titel", "ICS-Import: Zeilen-Folding entfaltet");
+  eq(ev[0].repeat, "biweekly", "ICS-Import: INTERVAL=2 → biweekly");
+}
+eq(parseIcs("kein ics").length, 0, "ICS-Import: Nicht-ICS → leer");
+
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

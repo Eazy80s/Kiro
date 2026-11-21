@@ -1,5 +1,5 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v19";
+const CACHE = "study-tracker-v20";
 
 // Eigene Assets (same-origin) — werden beim Install vorab gecacht.
 const ASSETS = [
@@ -38,6 +38,20 @@ self.addEventListener("activate", (e) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Klick auf eine Erinnerung: bestehendes App-Fenster fokussieren oder öffnen.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || "./";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if ("focus" in w) return w.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
   );
 });
 

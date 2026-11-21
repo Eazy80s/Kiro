@@ -73,12 +73,22 @@
 
         <section class="dash-block">
           <h2>Fokus heute</h2>
+          <form id="quick-task-form" class="quick-task-form">
+            <input type="text" id="quick-task-text" placeholder="Schnell eine Aufgabe für heute …" aria-label="Neue Aufgabe für heute" required />
+            <select id="quick-task-module" aria-label="Modul für die Aufgabe"></select>
+            <button type="submit" class="primary-btn">+</button>
+          </form>
           <ul id="pinned-tasks" class="focus-list"></ul>
         </section>
 
         <section class="dash-block">
           <h2>Anstehend</h2>
           <ul id="week-agenda" class="agenda-list"></ul>
+        </section>
+
+        <section class="dash-block" id="semester-block" hidden>
+          <h2>Noten je Semester</h2>
+          <div id="semester-stats" class="semester-stats"></div>
         </section>
       </div>
     </section>
@@ -98,14 +108,20 @@
       </div>
       <div class="calendar-sub">
         <button id="today-btn" class="ghost-btn">Heute</button>
+        <div class="cal-view-toggle" role="group" aria-label="Kalenderansicht">
+          <button id="view-month" class="ghost-btn active" aria-pressed="true">Monat</button>
+          <button id="view-week" class="ghost-btn" aria-pressed="false">Woche</button>
+        </div>
         <span id="selected-day-label" class="muted"></span>
       </div>
+      <input type="search" id="calendar-search" class="calendar-search" placeholder="🔍 Termine & geplante Aufgaben durchsuchen …" aria-label="Kalender durchsuchen" />
 
-      <div class="calendar-weekdays">
+      <div class="calendar-weekdays" id="calendar-weekdays">
         <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
         <span>Fr</span><span>Sa</span><span>So</span>
       </div>
       <div id="calendar-grid" class="calendar-grid"></div>
+      <div id="calendar-week" class="calendar-week" hidden></div>
 
       <!-- Detail des ausgewählten Tages -->
       <div id="day-detail" class="day-detail"></div>
@@ -276,7 +292,7 @@
 
       <details class="settings-group">
         <summary>Erinnerungen</summary>
-        <p class="muted">Erhalte eine Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Funktioniert, solange die App in einem Tab geöffnet ist.</p>
+        <p class="muted">Erhalte eine System-Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Die Benachrichtigung ist anklickbar und öffnet die App. Hinweis: Browser (besonders auf dem iPhone) liefern solche Erinnerungen zuverlässig nur aus, während die App bzw. ein Tab geöffnet ist oder kürzlich geöffnet war — echtes Hintergrund-Push bei komplett geschlossener App ist ohne eigenen Server nicht möglich.</p>
         <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
       </details>
 
@@ -285,6 +301,10 @@
         <p class="muted">Kalender als <code>.ics</code> exportieren, eine druckbare Übersicht erzeugen, oder deine Daten als Datei sichern bzw. wieder einspielen.</p>
         <div class="data-actions">
           <button id="ics-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Kalender (.ics)</button>
+          <label class="primary-btn file-label">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 21V11m0 0 3 3m-3-3-3 3"/></svg> Kalender importieren (.ics)
+            <input type="file" id="ics-import-file" accept="text/calendar,.ics" hidden />
+          </label>
           <button id="print-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Papierversion drucken</button>
         </div>
         <div class="data-actions" style="margin-top:4px">

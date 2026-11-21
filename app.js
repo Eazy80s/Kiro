@@ -180,6 +180,30 @@ function computeGpa() {
   return { value: sum / graded.length, count: graded.length, weighted: false };
 }
 
+// Noten je Semester: liefert pro Semester den ECTS-gewichteten Schnitt der
+// benoteten Module, chronologisch sortiert (SS vor WS, Jahr aufsteigend).
+// Reine Funktion (nimmt die Module als Argument) → gut testbar.
+// Rückgabe: [{ semester, avg, count, ects }], Module ohne Semester als "Ohne Semester".
+function gradesBySemester(modules) {
+  const groups = new Map();
+  modules.forEach((m) => {
+    if (typeof m.grade !== "number" || isNaN(m.grade)) return;
+    const key = m.semester || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  });
+  const out = [];
+  groups.forEach((mods, key) => {
+    const totalEcts = mods.reduce((a, m) => a + (m.ects || 0), 0);
+    let avg;
+    if (totalEcts > 0) avg = mods.reduce((a, m) => a + m.grade * (m.ects || 0), 0) / totalEcts;
+    else avg = mods.reduce((a, m) => a + m.grade, 0) / mods.length;
+    out.push({ semester: key || "Ohne Semester", semKey: key, avg, count: mods.length, ects: totalEcts });
+  });
+  out.sort((a, b) => semesterSortKey(a.semKey) - semesterSortKey(b.semKey));
+  return out;
+}
+
 /* ---------- Date helpers ----------
    Use LOCAL date components (not toISOString(), which is UTC) so day math
    never drifts by a day in timezones behind/ahead of UTC. */
@@ -386,6 +410,67 @@ function buildIcs() {
   return lines.join("\r\n");
 }
 
+/* ---------- ICS-Import (Punkt: Termine aus Uni-Kalender einlesen) ---------- */
+// Entfaltet RFC-5545-Zeilenfortsetzungen (Folding): Folgezeilen, die mit einem
+// Leerzeichen/Tab beginnen, gehören an die vorige Zeile.
+function icsUnfold(text) {
+  const raw = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const out = [];
+  raw.forEach((line) => {
+    if (/^[ \t]/.test(line) && out.length) out[out.length - 1] += line.slice(1);
+    else out.push(line);
+  });
+  return out;
+}
+// Macht aus ICS-Escapes wieder normalen Text.
+function icsUnescape(s) {
+  return String(s).replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
+}
+// Wandelt ein ICS-DTSTART (DATE oder DATE-TIME) in { date:"YYYY-MM-DD", time:"HH:MM"|null }.
+function icsParseWhen(value) {
+  if (!value) return null;
+  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?/.exec(value.trim());
+  if (!m) return null;
+  const date = `${m[1]}-${m[2]}-${m[3]}`;
+  const time = m[4] ? `${m[4]}:${m[5]}` : null;
+  return { date, time };
+}
+// Parst ICS-Text zu Event-Objekten im App-Format. Reine Funktion → testbar.
+// Unterstützt: SUMMARY, DTSTART (Datum/Zeit), einfache RRULE (FREQ + UNTIL + INTERVAL=2).
+// UID wird NICHT übernommen (wir vergeben eigene), Typ = "other".
+const ICS_FREQ_REV = { DAILY: "daily", WEEKLY: "weekly", MONTHLY: "monthly" };
+function parseIcs(text) {
+  const lines = icsUnfold(text);
+  const events = [];
+  let cur = null;
+  lines.forEach((line) => {
+    const u = line.toUpperCase();
+    if (u === "BEGIN:VEVENT") { cur = { title: "", date: null, time: null, repeat: null, repeatUntil: null }; return; }
+    if (u === "END:VEVENT") {
+      if (cur && cur.date) events.push(cur);
+      cur = null; return;
+    }
+    if (!cur) return;
+    const ci = line.indexOf(":");
+    if (ci < 0) return;
+    const rawKey = line.slice(0, ci);       // z. B. "DTSTART;VALUE=DATE"
+    const key = rawKey.split(";")[0].toUpperCase();
+    const val = line.slice(ci + 1);
+    if (key === "SUMMARY") cur.title = icsUnescape(val).replace(/\n/g, " ").trim();
+    else if (key === "DTSTART") { const w = icsParseWhen(val); if (w) { cur.date = w.date; cur.time = w.time; } }
+    else if (key === "RRULE") {
+      const parts = {};
+      val.split(";").forEach((p) => { const [k, v] = p.split("="); if (k) parts[k.toUpperCase()] = (v || "").toUpperCase(); });
+      const freq = ICS_FREQ_REV[parts.FREQ];
+      if (freq) {
+        cur.repeat = (freq === "weekly" && parts.INTERVAL === "2") ? "biweekly" : freq;
+        if (parts.UNTIL) { const w = icsParseWhen(parts.UNTIL); if (w) cur.repeatUntil = w.date; }
+      }
+    }
+  });
+  return events;
+}
+
 /* ---------- German study-time formatting ---------- */
 // e.g. 3725s -> "1 Std. 2 Min." ; under a minute -> "0 Min."
 function formatDuration(sec) {
@@ -482,6 +567,42 @@ function renderDashboard() {
   renderOverdue();
   renderPinnedTasks();
   renderAgenda();
+  renderSemesterStats();
+}
+
+// Noten-Verlauf je Semester (Dashboard). Zeigt pro Semester den gewichteten
+// Schnitt als Balken (dt. Skala 1,0 best … 5,0) plus Trend ggü. Vorsemester.
+function renderSemesterStats() {
+  const wrap = document.getElementById("semester-stats");
+  const block = document.getElementById("semester-block");
+  if (!wrap || !block) return;
+  const rows = gradesBySemester(state.modules);
+  // Erst ab zwei benoteten Semestern ist ein „Verlauf“ aussagekräftig.
+  if (rows.length < 2) { wrap.innerHTML = ""; block.hidden = true; return; }
+  block.hidden = false;
+
+  // Balkenbreite: 1,0 = voll, 5,0 = kurz (bessere Note = längerer, grünerer Balken).
+  const widthFor = (g) => Math.max(6, Math.round((5 - g) / 4 * 100));
+  const fmt = (g) => g.toFixed(2).replace(".", ",");
+
+  wrap.innerHTML = rows.map((r, i) => {
+    let trend = "";
+    if (i > 0) {
+      const diff = r.avg - rows[i - 1].avg; // kleiner = besser
+      if (Math.abs(diff) < 0.05) trend = `<span class="sem-trend flat" title="unverändert">→</span>`;
+      else if (diff < 0) trend = `<span class="sem-trend up" title="besser als Vorsemester">▲ ${fmt(Math.abs(diff))}</span>`;
+      else trend = `<span class="sem-trend down" title="schlechter als Vorsemester">▼ ${fmt(Math.abs(diff))}</span>`;
+    }
+    const cls = r.avg <= 1.5 ? "excellent" : r.avg <= 2.5 ? "good" : r.avg <= 3.5 ? "ok" : "weak";
+    return `
+      <div class="sem-row">
+        <div class="sem-head">
+          <span class="sem-name">${escapeHtml(r.semester)}</span>
+          <span class="sem-avg">Ø ${fmt(r.avg)} <span class="sem-meta">· ${r.count} Modul(e)${r.ects ? ` · ${r.ects} ECTS` : ""}</span> ${trend}</span>
+        </div>
+        <div class="sem-bar"><div class="sem-fill ${cls}" style="width:${widthFor(r.avg)}%"></div></div>
+      </div>`;
+  }).join("");
 }
 
 function renderCountdown() {
@@ -528,6 +649,14 @@ function renderPinnedModules() {
     if (m.ects) bits.push(`${m.ects} ECTS`);
     if (typeof m.grade === "number") bits.push(`Note ${m.grade}`);
     if (m.completed) bits.push("✓ abgeschlossen");
+    // Eingetragene Weblinks des Moduls als anklickbare Chips anzeigen (sichere
+    // http(s)-URLs, in migrate() bereits gehärtet). Ohne Links kein Zusatz.
+    const links = Array.isArray(m.links) ? m.links.filter((l) => l && l.url) : [];
+    const linksHtml = links.length
+      ? `<div class="pinned-links">` + links.map((l) =>
+          `<a class="mod-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.url)}">${icon("link")} ${escapeHtml(l.label || l.url)}</a>`
+        ).join("") + `</div>`
+      : "";
     const div = document.createElement("div");
     div.className = "module-progress-item";
     div.innerHTML = `
@@ -535,7 +664,8 @@ function renderPinnedModules() {
         <span>${escapeHtml(m.name)} ${bits.length ? `<span class="meta">· ${bits.join(" · ")}</span>` : ""}</span>
         <span>${pct}%</span>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      ${linksHtml}`;
     wrap.appendChild(div);
   });
 }
@@ -568,9 +698,29 @@ function renderOverdue() {
   });
 }
 
+// Modul-Auswahl der Schnelleingabe aktuell halten (Auswahl nach Möglichkeit erhalten).
+function fillQuickTaskModule() {
+  const sel = document.getElementById("quick-task-module");
+  if (!sel) return;
+  const prev = sel.value;
+  if (!state.modules.length) {
+    sel.innerHTML = `<option value="">Kein Modul — erst eins anlegen</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  // Angeheftete/offene Module zuerst, dann der Rest — die wahrscheinlichsten Ziele oben.
+  const ordered = state.modules.slice().sort((a, b) =>
+    (b.pinned - a.pinned) || (a.completed - b.completed));
+  sel.innerHTML = ordered.map((m) =>
+    `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+  if (ordered.some((m) => m.id === prev)) sel.value = prev;
+}
+
 function renderPinnedTasks() {
   const list = document.getElementById("pinned-tasks");
   list.innerHTML = "";
+  fillQuickTaskModule();
 
   // Today's Focus = tasks scheduled for today, grouped per module.
   const today = todayIso();
@@ -640,6 +790,30 @@ function renderPinnedTasks() {
    ============================================================ */
 let calYear, calMonth;        // currently viewed month
 let selectedDate = null;      // YYYY-MM-DD currently selected day
+let calendarFilter = "";      // Suchbegriff für die Kalender-Treffermarkierung
+let calView = "month";        // "month" | "week"
+
+// Montag der Woche, in der `iso` liegt (ISO-Woche, Montag-first).
+function mondayOf(iso) {
+  const d = new Date(iso + "T00:00:00");
+  const off = (d.getDay() + 6) % 7; // Mo=0 … So=6
+  d.setDate(d.getDate() - off);
+  return isoOf(d);
+}
+
+// Trifft der an einem Tag vorhandene Inhalt auf den Suchbegriff? Prüft
+// Event-Titel und die Texte der an dem Tag geplanten Modulaufgaben (inkl.
+// Modulname). Reine Funktion (Arrays als Argumente) → testbar.
+function dayMatchesQuery(events, tasks, q) {
+  if (!q) return false;
+  const needle = q.trim().toLowerCase();
+  if (!needle) return false;
+  const hay = [
+    ...events.map((e) => e.title || ""),
+    ...tasks.map(({ module, task }) => `${task.text} ${module ? module.name : ""}`),
+  ].join(" ").toLowerCase();
+  return hay.includes(needle);
+}
 
 function initCalendarState() {
   const now = new Date();
@@ -657,6 +831,29 @@ function typeLabel(t) { return TYPE_LABELS[t] || t; }
 
 function renderCalendar() {
   if (calYear === undefined) initCalendarState();
+
+  // Umschalter-Zustand und Container-Sichtbarkeit spiegeln.
+  const monthGrid = document.getElementById("calendar-grid");
+  const weekWrap = document.getElementById("calendar-week");
+  const weekdays = document.getElementById("calendar-weekdays");
+  const btnMonth = document.getElementById("view-month");
+  const btnWeek = document.getElementById("view-week");
+  if (btnMonth && btnWeek) {
+    btnMonth.classList.toggle("active", calView === "month");
+    btnWeek.classList.toggle("active", calView === "week");
+    btnMonth.setAttribute("aria-pressed", calView === "month" ? "true" : "false");
+    btnWeek.setAttribute("aria-pressed", calView === "week" ? "true" : "false");
+  }
+  if (calView === "week") {
+    if (monthGrid) monthGrid.hidden = true;
+    if (weekdays) weekdays.hidden = true;
+    if (weekWrap) weekWrap.hidden = false;
+    renderWeek();
+    return;
+  }
+  if (monthGrid) monthGrid.hidden = false;
+  if (weekdays) weekdays.hidden = false;
+  if (weekWrap) weekWrap.hidden = true;
 
   document.getElementById("calendar-title").textContent = `${MONTHS[calMonth]} ${calYear}`;
   document.getElementById("selected-day-label").textContent =
@@ -678,10 +875,16 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayEventsForMatch = eventsOnDate(dateStr);
+    const dayTasksForMatch = tasksOnDate(dateStr);
+    const isMatch = calendarFilter && dayMatchesQuery(dayEventsForMatch, dayTasksForMatch, calendarFilter);
+    const isDimmed = calendarFilter && !isMatch;
     const cell = document.createElement("div");
     cell.className = "cal-cell"
       + (dateStr === today ? " today" : "")
-      + (dateStr === selectedDate ? " selected" : "");
+      + (dateStr === selectedDate ? " selected" : "")
+      + (isMatch ? " search-hit" : "")
+      + (isDimmed ? " search-dim" : "");
     cell.dataset.date = dateStr; // Drop-Ziel (Drag & Drop)
     cell.innerHTML = `<span class="day-num">${day}</span>`;
 
@@ -723,6 +926,83 @@ function renderCalendar() {
       renderCalendar();
     });
     grid.appendChild(cell);
+  }
+
+  renderDayDetail();
+}
+
+// Wochenansicht: 7 Tagesspalten (Mo–So) mit chronologisch sortierten Terminen
+// und geplanten Aufgaben. Die Woche richtet sich nach `selectedDate`.
+function renderWeek() {
+  const wrap = document.getElementById("calendar-week");
+  if (!wrap) return;
+  const base = selectedDate || todayIso();
+  const start = mondayOf(base);
+  const startD = new Date(start + "T00:00:00");
+  const endD = new Date(start + "T00:00:00"); endD.setDate(endD.getDate() + 6);
+  const today = todayIso();
+  const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+  // Titel: Zeitraum der Woche.
+  const fmtShort = (d) => `${d.getDate()}.${d.getMonth() + 1}.`;
+  document.getElementById("calendar-title").textContent = `Woche ${fmtShort(startD)} – ${fmtShort(endD)} ${endD.getFullYear()}`;
+  document.getElementById("selected-day-label").textContent =
+    selectedDate ? `Ausgewählt: ${formatDate(selectedDate)}` : "";
+
+  wrap.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start + "T00:00:00"); d.setDate(d.getDate() + i);
+    const iso = isoOf(d);
+    const dayEvents = eventsOnDate(iso).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+    const dayTasks = tasksOnDate(iso);
+    const isMatch = calendarFilter && dayMatchesQuery(dayEvents, dayTasks, calendarFilter);
+    const isDimmed = calendarFilter && !isMatch;
+
+    const col = document.createElement("div");
+    col.className = "wk-col"
+      + (iso === today ? " today" : "")
+      + (iso === selectedDate ? " selected" : "")
+      + (isMatch ? " search-hit" : "")
+      + (isDimmed ? " search-dim" : "");
+    col.dataset.date = iso; // Drop-Ziel für Drag & Drop
+
+    const head = document.createElement("div");
+    head.className = "wk-head";
+    head.innerHTML = `<span class="wk-wd">${WD[i]}</span><span class="wk-num">${d.getDate()}.${d.getMonth() + 1}.</span>`;
+    head.addEventListener("click", () => { selectedDate = iso; renderCalendar(); });
+    col.appendChild(head);
+
+    const items = document.createElement("div");
+    items.className = "wk-items";
+    dayEvents.forEach((e) => {
+      const ev = document.createElement("div");
+      ev.className = `cal-event ${e.type}`;
+      const safeColor = sanitizeHexColor(e.color);
+      if (safeColor) ev.style.background = safeColor;
+      const prefix = e.time ? `${formatTime(e.time)} ` : "";
+      ev.textContent = `${prefix}${e.title}${e.repeat ? " ↻" : ""}`;
+      ev.title = ev.textContent + " — gedrückt halten und auf einen anderen Tag ziehen";
+      ev.dataset.dragKind = "event"; ev.dataset.dragId = e.id; ev.dataset.fromDate = iso;
+      makeDraggableCalEvent(ev);
+      items.appendChild(ev);
+    });
+    dayTasks.forEach(({ module, task }) => {
+      const ev = document.createElement("div");
+      ev.className = "cal-event task" + (task.done ? " done" : "");
+      ev.textContent = `${task.text} · ${module.name}`;
+      ev.title = ev.textContent + " — gedrückt halten und auf einen anderen Tag ziehen";
+      ev.dataset.dragKind = "task"; ev.dataset.dragId = task.id; ev.dataset.fromDate = iso;
+      makeDraggableCalEvent(ev);
+      items.appendChild(ev);
+    });
+    if (!dayEvents.length && !dayTasks.length) {
+      const empty = document.createElement("div");
+      empty.className = "wk-empty";
+      empty.textContent = "—";
+      items.appendChild(empty);
+    }
+    col.appendChild(items);
+    wrap.appendChild(col);
   }
 
   renderDayDetail();
@@ -948,7 +1228,8 @@ function attachLongPressDrag(el, opts) {
 // Kalendereintrag per Drag umterminieren (Event oder geplante Aufgabe).
 function makeDraggableCalEvent(ev) {
   attachLongPressDrag(ev, {
-    dropSelector: ".cal-cell[data-date]",
+    // Drop-Ziele in BEIDEN Ansichten: Monatszellen und Wochenspalten.
+    dropSelector: ".cal-cell[data-date], .wk-col[data-date]",
     ghostText: () => ev.textContent,
     onDrop: (cell) => {
       const toDate = cell.dataset.date;
@@ -1012,10 +1293,41 @@ function shiftMonth(delta) {
   renderCalendar();
 }
 
+const calSearchEl = document.getElementById("calendar-search");
+if (calSearchEl) {
+  calSearchEl.addEventListener("input", (e) => {
+    calendarFilter = e.target.value || "";
+    renderCalendar();
+  });
+}
+
+// Monats-/Wochenansicht umschalten
+const viewMonthBtn = document.getElementById("view-month");
+const viewWeekBtn = document.getElementById("view-week");
+if (viewMonthBtn) viewMonthBtn.addEventListener("click", () => { calView = "month"; renderCalendar(); });
+if (viewWeekBtn) viewWeekBtn.addEventListener("click", () => {
+  calView = "week";
+  if (!selectedDate) selectedDate = todayIso();
+  renderCalendar();
+});
+
+// In der Wochenansicht verschieben die Pfeile ganze Wochen (sonst Tage/Monate).
+function shiftWeek(delta) {
+  const base = selectedDate || todayIso();
+  const d = new Date(base + "T00:00:00");
+  d.setDate(d.getDate() + delta * 7);
+  selectedDate = isoOf(d);
+  calYear = d.getFullYear();
+  calMonth = d.getMonth();
+  renderCalendar();
+}
+
+// In der Wochenansicht springen die inneren Pfeile tageweise, die äußeren
+// wochenweise; in der Monatsansicht wie bisher (Tag bzw. Monat).
 document.getElementById("prev-day").addEventListener("click", () => shiftDay(-1));
 document.getElementById("next-day").addEventListener("click", () => shiftDay(1));
-document.getElementById("prev-month").addEventListener("click", () => shiftMonth(-1));
-document.getElementById("next-month").addEventListener("click", () => shiftMonth(1));
+document.getElementById("prev-month").addEventListener("click", () => calView === "week" ? shiftWeek(-1) : shiftMonth(-1));
+document.getElementById("next-month").addEventListener("click", () => calView === "week" ? shiftWeek(1) : shiftMonth(1));
 document.getElementById("today-btn").addEventListener("click", () => {
   selectedDate = todayIso();
   initCalendarState();
@@ -1023,6 +1335,25 @@ document.getElementById("today-btn").addEventListener("click", () => {
   calMonth = new Date().getMonth();
   renderCalendar();
 });
+
+// Schnelleingabe im Dashboard: Aufgabe für HEUTE direkt anlegen (Fokus heute).
+const quickTaskForm = document.getElementById("quick-task-form");
+if (quickTaskForm) {
+  quickTaskForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const textEl = document.getElementById("quick-task-text");
+    const modSel = document.getElementById("quick-task-module");
+    const text = (textEl.value || "").trim();
+    const mod = state.modules.find((m) => m.id === modSel.value);
+    if (!text || !mod) { if (!state.modules.length) showSnackbar("Lege zuerst ein Modul an, dann kannst du Aufgaben hinzufügen."); return; }
+    mod.tasks.push({ id: uid(), text, done: false, pinned: false, date: todayIso(), subtasks: [] });
+    saveState();
+    textEl.value = "";
+    renderDashboard();
+    renderModules(); // Modul-Tab konsistent halten
+    showSnackbar(`Aufgabe „${text}“ für heute zu „${mod.name}“ hinzugefügt.`);
+  });
+}
 
 document.getElementById("event-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -2138,6 +2469,42 @@ if (icsBtn) {
   });
 }
 
+/* ----- ICS-Import: Termine aus einem Uni-/Fremdkalender einlesen ----- */
+const icsImportEl = document.getElementById("ics-import-file");
+if (icsImportEl) {
+  icsImportEl.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = parseIcs(reader.result);
+        if (!parsed.length) { setStatus("Keine Termine in der .ics-Datei gefunden.", true); return; }
+        let added = 0;
+        parsed.forEach((p) => {
+          state.events.push({
+            id: uid(), date: p.date, time: p.time || null,
+            title: p.title || "(ohne Titel)", type: "other",
+            repeat: p.repeat || null, repeatUntil: p.repeatUntil || null, color: null,
+          });
+          added++;
+        });
+        saveState();
+        renderCalendar();
+        renderDashboard();
+        setStatus(`${added} Termin(e) aus der .ics-Datei importiert.`);
+        showSnackbar(`${added} Termin(e) importiert.`);
+      } catch (err) {
+        setStatus("Import fehlgeschlagen: Datei konnte nicht gelesen werden.", true);
+      } finally {
+        e.target.value = ""; // erneuter Import derselben Datei möglich
+      }
+    };
+    reader.onerror = () => setStatus("Datei konnte nicht gelesen werden.", true);
+    reader.readAsText(file);
+  });
+}
+
 /* ----- Druck-/PDF-Ansicht: Papierversion aus den Live-Daten (Punkt 9) -----
    Erzeugt eine mehrteilige, im App-Look gestaltete Übersicht:
    Semesterübersicht + Noten (ECTS-gewichtet, Prognose) + Fortschritt +
@@ -2278,9 +2645,26 @@ function checkReminders() {
   if (!due.length) return;
   due.forEach((e) => {
     const when = e.time ? ` um ${formatTime(e.time)} Uhr` : "";
-    try { new Notification(`Heute: ${typeLabel(e.type)}`, { body: `${e.title}${when}`, tag: e.id }); } catch (err) {}
+    showAppNotification(`Heute: ${typeLabel(e.type)}`, `${e.title}${when}`, e.id);
   });
   markNotified(already.concat(due.map((e) => e.id)));
+}
+
+// Benachrichtigung bevorzugt über den Service Worker ausgeben
+// (registration.showNotification), weil `new Notification()` auf vielen mobilen
+// Browsern nicht funktioniert. Fällt auf `new Notification()` zurück, wenn kein
+// SW verfügbar ist. Die SW-Notification ist klickbar und öffnet die App.
+function showAppNotification(title, body, tag) {
+  const opts = { body, tag, icon: "icon-192.png", badge: "icon-192.png", data: { url: "./" } };
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.showNotification(title, opts))
+        .catch(() => { try { new Notification(title, opts); } catch (e) {} });
+      return;
+    }
+  } catch (e) {}
+  try { new Notification(title, opts); } catch (e) {}
 }
 const notifyBtn = document.getElementById("notify-btn");
 if (notifyBtn) {
@@ -2289,6 +2673,11 @@ if (notifyBtn) {
     Notification.requestPermission().then(() => { updateNotifyButton(); checkReminders(); });
   });
 }
+
+// Erinnerungen auch dann ausliefern, wenn die App länger offen bleibt (z. B. über
+// einen Tageswechsel): beim Zurückkehren in den Tab und stündlich prüfen.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkReminders(); });
+setInterval(() => { checkReminders(); }, 60 * 60 * 1000);
 
 // Custom-duration settings form
 function pomoFillSettings() {
@@ -2857,7 +3246,8 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     taskCompletion, moduleProgress, overallProgress, computeGpa,
     isPassingGrade, formatDuration, escapeHtml, sanitizeUrl, sanitizeHexColor,
-    migrate, SCHEMA_VERSION, syncDecision,
+    migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
+    parseIcs, buildIcs,
   };
 }
 

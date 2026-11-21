@@ -63,6 +63,13 @@ check(dom.includes('id="study-chart"') || dom.includes("Verlauf"), "Lernzeit-Ver
 check(dom.includes('id="snackbar"'), "Snackbar-Element vorhanden");
 check(dom.includes('id="week-agenda"'), "Anstehend/Agenda-Element vorhanden");
 check(/<svg[^>]*class="ic/.test(dom), "SVG-Icons werden gerendert (statt Emojis)");
+// Neue Features
+check(dom.includes('id="quick-task-form"'), "Schnelleingabe (Fokus heute) vorhanden");
+check(dom.includes('id="semester-block"'), "Semester-Noten-Block vorhanden");
+check(dom.includes('id="calendar-search"'), "Kalendersuche vorhanden");
+check(dom.includes('id="view-week"') && dom.includes('id="view-month"'), "Monats-/Wochen-Umschalter vorhanden");
+check(dom.includes('id="ics-import-file"'), "ICS-Import vorhanden");
+check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
 
 console.log(`\nBrowser-Smoke-Test: ${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

@@ -246,5 +246,38 @@ const parseIcs = api.parseIcs;
 }
 eq(parseIcs("kein ics").length, 0, "ICS-Import: Nicht-ICS → leer");
 
+/* ---- Lernplan-Überblick (Vorlesungszählung) ---- */
+const ls = api.lecturesSummary;
+eq(ls({ tasks: [
+  { kind: "lecture", done: true }, { kind: "lecture", done: false },
+  { kind: "lecture", done: true }, { kind: "task", done: false },
+]}), { total: 3, done: 2, pct: 67 }, "Lernplan: 2 von 3 Vorlesungen (Aufgabe zählt nicht)");
+eq(ls({ tasks: [{ kind: "task", done: true }] }), { total: 0, done: 0, pct: 0 }, "Lernplan: keine Vorlesungen → total 0");
+eq(ls({ tasks: [] }), { total: 0, done: 0, pct: 0 }, "Lernplan: leeres Modul");
+
+/* ---- ECTS-Studienziel ---- */
+const ep = api.ectsProgress;
+{
+  const mods = [
+    { ects: 6, completed: true }, { ects: 9, completed: true },
+    { ects: 6, completed: false },
+  ];
+  eq(ep(mods, 180), { active: true, earned: 15, goal: 180, pct: 8, remaining: 165 }, "ECTS-Ziel: 15/180 erreicht");
+  eq(ep(mods, 0).active, false, "ECTS-Ziel: kein Ziel gesetzt → inaktiv");
+  eq(ep([{ ects: 100, completed: true }], 90).pct, 100, "ECTS-Ziel: Übererfüllung wird auf 100% gedeckelt");
+}
+
+/* ---- Feiertage (bundesweit) ---- */
+const hol = api.holidayName;
+// 2026: Ostersonntag = 5. April → Karfreitag 3.4., Ostermontag 6.4.
+eq(api.easterSunday(2026).getMonth() + 1, 4, "Ostern 2026 im April");
+eq(api.easterSunday(2026).getDate(), 5, "Ostersonntag 2026 = 5. April");
+eq(hol("2026-04-03"), "Karfreitag", "Feiertag: Karfreitag 2026");
+eq(hol("2026-04-06"), "Ostermontag", "Feiertag: Ostermontag 2026");
+eq(hol("2026-01-01"), "Neujahr", "Feiertag: Neujahr");
+eq(hol("2026-10-03"), "Tag der Deutschen Einheit", "Feiertag: 3. Oktober");
+eq(hol("2026-05-14"), "Christi Himmelfahrt", "Feiertag: Christi Himmelfahrt 2026 (Ostern+39)");
+eq(hol("2026-07-15"), null, "Normaler Tag → kein Feiertag");
+
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

@@ -8,7 +8,11 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
 - **🎥 Lernplan (Fernstudium)** – jede Checklisten-Einheit kann als **Vorlesung** oder **Aufgabe** markiert werden und einen eigenen **Link** zur Plattform/Aufzeichnung tragen (anklickbar, sichere http(s)-URL). So wird die Checkliste zum flexiblen, selbst terminierten Lernplan — die Einträge erscheinen mit Typ und Link auch in „Fokus heute" und im Kalender.
-- **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul.
+- **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul. Optionales **ECTS-Studienziel** (z. B. 180) mit Fortschrittsanzeige „erreicht / Ziel".
+- **🎥 Lernplan-Überblick** – je Modul ein kompakter Vorlesungs-Fortschritt („x/y angesehen").
+- **⚠️ Aufmerksamkeit** – überfällige Aufgaben **und** überfällige Prüfungen/Abgaben gebündelt im Dashboard.
+- **🗄️ Modul-Archiv** – die Modul-Abschnitte (In Bearbeitung / Demnächst / Abgeschlossen) sind einklappbar; „Abgeschlossen" startet eingeklappt.
+- **🎌 Feiertage** – bundesweite gesetzliche Feiertage werden im Kalender markiert (inkl. beweglicher wie Ostern/Pfingsten).
 - **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
 - **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich und **je Modul**, mit einstellbaren **Zielen**.
 - **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben, mit **Schnelleingabe** zum direkten Hinzufügen einer Aufgabe für heute.

@@ -70,6 +70,8 @@ function migrate(data) {
   if (!data || typeof data !== "object") data = {};
   if (!Array.isArray(data.modules)) data.modules = [];
   if (!Array.isArray(data.events)) data.events = [];
+  // Studienziel in ECTS (z. B. 180). 0/leer = kein Ziel gesetzt.
+  data.ectsTarget = Number(data.ectsTarget) > 0 ? Number(data.ectsTarget) : 0;
 
   // --- Versionierte, nicht-additive Umwandlungen (von alt nach neu) ---
   const from = Number(data.schemaVersion) || 0;
@@ -174,6 +176,16 @@ function overallProgress() {
   return { pct: Math.round((done / all.length) * 100), weighted: false };
 }
 
+// Fortschritt gegenüber einem ECTS-Studienziel. ECTS gelten als erreicht, wenn
+// das Modul abgeschlossen ist. Reine Funktion → testbar. target<=0 ⇒ kein Ziel.
+function ectsProgress(modules, target) {
+  const goal = Number(target) || 0;
+  const earned = modules.reduce((a, m) => a + (m.completed ? (m.ects || 0) : 0), 0);
+  if (goal <= 0) return { active: false, earned, goal: 0, pct: 0, remaining: 0 };
+  const pct = Math.min(100, Math.round((earned / goal) * 100));
+  return { active: true, earned, goal, pct, remaining: Math.max(0, goal - earned) };
+}
+
 // GPA = ECTS-weighted average of recorded grades (ignores modules with no grade).
 function computeGpa() {
   const graded = state.modules.filter((m) => typeof m.grade === "number" && !isNaN(m.grade));
@@ -185,6 +197,16 @@ function computeGpa() {
   }
   const sum = graded.reduce((a, m) => a + m.grade, 0);
   return { value: sum / graded.length, count: graded.length, weighted: false };
+}
+
+// Lernplan-Überblick je Modul: zählt Vorlesungen/Lerneinheiten und wie viele
+// davon erledigt sind. Reine Funktion → testbar.
+function lecturesSummary(module) {
+  const lectures = (module.tasks || []).filter((t) => t.kind === "lecture");
+  const done = lectures.filter((t) => t.done).length;
+  const total = lectures.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return { total, done, pct };
 }
 
 // Noten je Semester: liefert pro Semester den ECTS-gewichteten Schnitt der
@@ -241,6 +263,48 @@ function tasksOnDate(dateStr) {
     m.tasks.forEach((t) => { if (t.date === dateStr) out.push({ module: m, task: t }); });
   });
   return out;
+}
+
+/* ---------- Feiertage (bundesweit, Deutschland) ----------
+   Reine Berechnung, keine Daten-Datei. Bewegliche Feiertage über die
+   Gauß'sche Osterformel. Nur die bundeseinheitlichen gesetzlichen Feiertage
+   (regionale wie Fronleichnam/Reformationstag bewusst ausgelassen, da je
+   Bundesland verschieden). Rückgabe für ein Jahr: { "YYYY-MM-DD": "Name" }. */
+function easterSunday(year) {
+  // Anonyme Gauß-Osterformel (gregorianisch).
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const mm = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * mm + 114) / 31);     // 3=März, 4=April
+  const day = ((h + l - 7 * mm + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+const _holidayCache = {};
+function germanHolidays(year) {
+  if (_holidayCache[year]) return _holidayCache[year];
+  const iso = (d) => isoOf(d);
+  const addDays = (base, n) => { const d = new Date(base); d.setDate(d.getDate() + n); return d; };
+  const easter = easterSunday(year);
+  const h = {};
+  h[`${year}-01-01`] = "Neujahr";
+  h[`${year}-05-01`] = "Tag der Arbeit";
+  h[`${year}-10-03`] = "Tag der Deutschen Einheit";
+  h[`${year}-12-25`] = "1. Weihnachtstag";
+  h[`${year}-12-26`] = "2. Weihnachtstag";
+  h[iso(addDays(easter, -2))] = "Karfreitag";
+  h[iso(addDays(easter, 1))] = "Ostermontag";
+  h[iso(addDays(easter, 39))] = "Christi Himmelfahrt";
+  h[iso(addDays(easter, 50))] = "Pfingstmontag";
+  _holidayCache[year] = h;
+  return h;
+}
+// Name des Feiertags an einem Datum (oder null).
+function holidayName(dateStr) {
+  const year = Number(dateStr.slice(0, 4));
+  if (!year) return null;
+  return germanHolidays(year)[dateStr] || null;
 }
 
 /* ---------- Recurrence ---------- */
@@ -570,6 +634,21 @@ function renderDashboard() {
     ? `Notendurchschnitt: ${gpa.value.toFixed(2).replace(".", ",")}`
     : "Noch keine Noten erfasst.";
 
+  // ECTS-Studienziel (nur anzeigen, wenn eins gesetzt ist).
+  const eg = ectsProgress(state.modules, state.ectsTarget);
+  const egBox = document.getElementById("ects-goal");
+  if (egBox) {
+    if (!eg.active) { egBox.hidden = true; }
+    else {
+      egBox.hidden = false;
+      const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace(".", ",");
+      document.getElementById("ects-goal-label").textContent = "ECTS-Ziel";
+      document.getElementById("ects-goal-count").textContent =
+        `${fmt(eg.earned)} / ${fmt(eg.goal)} ECTS · noch ${fmt(eg.remaining)}`;
+      document.getElementById("ects-goal-bar").style.width = eg.pct + "%";
+    }
+  }
+
   renderPinnedModules();
   renderOverdue();
   renderPinnedTasks();
@@ -683,20 +762,46 @@ function renderOverdue() {
   const block = document.getElementById("overdue-block");
   if (!wrap) return;
   const today = todayIso();
-  const overdue = tasksByDue().filter((x) => x.task.date < today);
-  if (!overdue.length) { wrap.innerHTML = ""; if (block) block.hidden = true; return; }
+
+  // (1) Überfällige, offene Aufgaben (abhakbar).
+  const overdueTasks = tasksByDue().filter((x) => x.task.date < today);
+  // (2) Überfällige einmalige Prüfungen/Abgaben aus dem Kalender (nicht wiederkehrend).
+  const overdueEvents = state.events
+    .filter((e) => (e.type === "exam" || e.type === "deadline") && !e.repeat && e.date < today)
+    .sort((a, b) => b.date.localeCompare(a.date)); // jüngstes zuerst
+
+  const count = overdueTasks.length + overdueEvents.length;
+  if (!count) { wrap.innerHTML = ""; if (block) block.hidden = true; return; }
   if (block) block.hidden = false;
-  wrap.innerHTML = `<h2 class="overdue-head">⚠️ Überfällig</h2>` +
-    `<ul class="focus-list">` + overdue.map(({ module, task, status }) => {
-      const cbId = `ov-${task.id}`;
-      return `<li class="focus-item">
-        <div class="focus-main">
-          <input type="checkbox" id="${cbId}" data-overdue-done="${task.id}" />
-          <span class="focus-text">${escapeHtml(task.text)}
-            <span class="due-badge ${status.cls}">${status.label}</span></span>
-          <span class="focus-mod">${escapeHtml(module.name)}</span>
-        </div></li>`;
-    }).join("") + `</ul>`;
+
+  const head = `<h2 class="overdue-head">⚠️ ${count} ${count === 1 ? "Sache braucht" : "Dinge brauchen"} Aufmerksamkeit</h2>`;
+
+  const taskItems = overdueTasks.map(({ module, task, status }) => {
+    const cbId = `ov-${task.id}`;
+    const kindBadge = task.kind === "lecture" ? `<span class="kind-badge lecture">${icon("play")} Vorlesung</span>` : "";
+    return `<li class="focus-item">
+      <div class="focus-main">
+        <input type="checkbox" id="${cbId}" data-overdue-done="${task.id}" />
+        <span class="focus-text">${kindBadge}${escapeHtml(task.text)}
+          <span class="due-badge ${status.cls}">${status.label}</span></span>
+        <span class="focus-mod">${escapeHtml(module.name)}</span>
+      </div></li>`;
+  }).join("");
+
+  const eventItems = overdueEvents.map((e) => {
+    const diff = daysBetween(e.date, today);
+    const label = diff === 1 ? "seit gestern" : `seit ${diff} Tagen`;
+    return `<li class="focus-item">
+      <div class="focus-main">
+        <span class="tag ${e.type}">${typeLabel(e.type)}</span>
+        <span class="focus-text">${escapeHtml(e.title)}
+          <span class="due-badge overdue">${label}</span></span>
+        <span class="focus-mod">${formatDate(e.date)}</span>
+      </div></li>`;
+  }).join("");
+
+  wrap.innerHTML = head + `<ul class="focus-list">` + taskItems + eventItems + `</ul>`;
+
   wrap.querySelectorAll("[data-overdue-done]").forEach((cb) => {
     cb.addEventListener("change", () => {
       const t = findTaskById(cb.dataset.overdueDone);
@@ -893,14 +998,18 @@ function renderCalendar() {
     const dayTasksForMatch = tasksOnDate(dateStr);
     const isMatch = calendarFilter && dayMatchesQuery(dayEventsForMatch, dayTasksForMatch, calendarFilter);
     const isDimmed = calendarFilter && !isMatch;
+    const holiday = holidayName(dateStr);
     const cell = document.createElement("div");
     cell.className = "cal-cell"
       + (dateStr === today ? " today" : "")
       + (dateStr === selectedDate ? " selected" : "")
       + (isMatch ? " search-hit" : "")
-      + (isDimmed ? " search-dim" : "");
+      + (isDimmed ? " search-dim" : "")
+      + (holiday ? " holiday" : "");
     cell.dataset.date = dateStr; // Drop-Ziel (Drag & Drop)
-    cell.innerHTML = `<span class="day-num">${day}</span>`;
+    if (holiday) cell.title = holiday;
+    cell.innerHTML = `<span class="day-num">${day}</span>`
+      + (holiday ? `<span class="holiday-dot" aria-label="Feiertag: ${escapeHtml(holiday)}">★</span>` : "");
 
     // Calendar events on this day (incl. recurring), timed first, ordered by time.
     // itemRef trägt die Herkunft, damit ein Eintrag per Drag umterminiert werden kann.
@@ -1031,6 +1140,9 @@ function renderDayDetail() {
   const dayTasks = tasksOnDate(selectedDate);
 
   let html = `<h3>${formatDate(selectedDate)}</h3>`;
+
+  const holiday = holidayName(selectedDate);
+  if (holiday) html += `<p class="holiday-note">★ Feiertag: ${escapeHtml(holiday)} <span class="muted">(bundesweit)</span></p>`;
 
   if (!dayEvents.length && !dayTasks.length) {
     html += `<p class="muted">Nichts geplant. Füge unten einen Kalendereintrag hinzu oder plane eine Modulaufgabe für diesen Tag.</p>`;
@@ -1562,20 +1674,35 @@ function renderModulesRaw() {
   const finished = visible.filter((m) => m.completed).sort(bySemester);
 
   const sections = [
-    { title: "In Bearbeitung", hint: "Angeheftete Module, an denen du arbeitest", items: ongoing },
-    { title: "Demnächst", hint: "Nicht begonnen / nicht angeheftet", items: upcoming },
-    { title: "Abgeschlossen", hint: "Fertige Module", items: finished },
+    { key: "ongoing", title: "In Bearbeitung", hint: "Angeheftete Module, an denen du arbeitest", items: ongoing },
+    { key: "upcoming", title: "Demnächst", hint: "Nicht begonnen / nicht angeheftet", items: upcoming },
+    { key: "finished", title: "Abgeschlossen", hint: "Fertige Module — eingeklappt als Archiv", items: finished },
   ];
 
   sections.forEach((sec) => {
     if (!sec.items.length) return;
+    // Beim Suchen/Filtern nichts einklappen (sonst wirkt ein Treffer „verschwunden“).
+    const collapsed = !q && !semesterFilter && sectionCollapsed[sec.key];
     const header = document.createElement("div");
-    header.className = "module-section-head";
-    header.innerHTML = `<span>${sec.title} <span class="section-count">${sec.items.length}</span></span><span class="section-hint">${sec.hint}</span>`;
+    header.className = "module-section-head collapsible" + (collapsed ? " collapsed" : "");
+    header.setAttribute("role", "button");
+    header.setAttribute("tabindex", "0");
+    header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    header.innerHTML =
+      `<span class="section-toggle">${icon(collapsed ? "chevronRight" : "chevronDown")}</span>` +
+      `<span>${sec.title} <span class="section-count">${sec.items.length}</span></span>` +
+      `<span class="section-hint">${sec.hint}</span>`;
+    const toggle = () => { sectionCollapsed[sec.key] = !sectionCollapsed[sec.key]; renderModules(); };
+    header.addEventListener("click", toggle);
+    header.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
     wrap.appendChild(header);
-    sec.items.forEach((m) => wrap.appendChild(renderModuleCard(m)));
+    if (!collapsed) sec.items.forEach((m) => wrap.appendChild(renderModuleCard(m)));
   });
 }
+
+// Einklapp-Zustand der Modul-Abschnitte (reine Ansichtssache, nicht persistiert).
+// „Abgeschlossen“ startet eingeklappt → wirkt als Semester-/Modul-Archiv.
+const sectionCollapsed = { ongoing: false, upcoming: false, finished: true };
 
 // Kleiner Hinweis unter den Modul-Noten: Status ggü. Wunschnote (Skala 1,0–5,0).
 function gradeHint(m) {
@@ -1609,6 +1736,19 @@ function sanitizeUrl(raw) {
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) return null;
     return u.href;
   } catch (e) { return null; }
+}
+
+// Lernplan-Überblick in der Modulkarte: kompakter Vorlesungs-Fortschritt.
+// Zeigt sich nur, wenn das Modul überhaupt Vorlesungen enthält.
+function renderLectureOverview(wrap, m) {
+  if (!wrap) return;
+  const s = lecturesSummary(m);
+  if (!s.total) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `
+    <div class="lecture-overview">
+      <span class="lecture-label">${icon("play")} Vorlesungen: <strong>${s.done}/${s.total}</strong> angesehen</span>
+      <div class="lecture-bar"><div class="lecture-fill" style="width:${s.pct}%"></div></div>
+    </div>`;
 }
 
 // Chips mit anklickbaren Modul-Links (Anzeige in der Modulkarte).
@@ -1731,6 +1871,7 @@ function renderModuleCard(m) {
       </div>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="mod-lectures"></div>
     <div class="mod-links"></div>
     <div class="module-body">
       <div class="module-controls">
@@ -1755,6 +1896,9 @@ function renderModuleCard(m) {
   // Teilnoten-Editor (Punkt 4)
   const gc = card.querySelector(".grade-components");
   renderGradeComponents(gc, m);
+
+  // Lernplan-Überblick (Vorlesungs-Fortschritt)
+  renderLectureOverview(card.querySelector(".mod-lectures"), m);
 
   // Modul-Links: anklickbare Chips + Editor
   renderModuleLinks(card.querySelector(".mod-links"), m);
@@ -2469,6 +2613,25 @@ if (goalsForm) {
   });
 }
 
+// Studienziel (ECTS)
+function fillEctsTarget() {
+  const el = document.getElementById("ects-target");
+  if (el) el.value = state.ectsTarget > 0 ? state.ectsTarget : "";
+}
+const ectsGoalForm = document.getElementById("ects-goal-form");
+if (ectsGoalForm) {
+  ectsGoalForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = parseInt(document.getElementById("ects-target").value, 10);
+    state.ectsTarget = (!v || v <= 0) ? 0 : v;
+    saveState();
+    fillEctsTarget();
+    renderDashboard();
+    const el = document.getElementById("ects-goal-status");
+    if (el) el.textContent = state.ectsTarget ? `Ziel gesetzt: ${state.ectsTarget} ECTS.` : "Kein ECTS-Ziel gesetzt.";
+  });
+}
+
 // Modul-Suche + Semesterfilter (Punkte 7 & 6)
 const moduleSearch = document.getElementById("module-search");
 if (moduleSearch) {
@@ -2954,6 +3117,7 @@ function applyRemote(doc) {
       pomoFillSettings();
     }
     fillGoalInputs();
+    fillEctsTarget();
     renderAll();
   } finally {
     syncApplying = false;
@@ -3291,6 +3455,7 @@ setTheme(loadTheme());       // Theme anwenden (Punkt 9)
 initCalendarState();
 fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
 fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
+fillEctsTarget();            // Studienziel (ECTS)
 fillCreateSemester();        // Semester-Dropdown im „Modul hinzufügen“-Formular
 renderDashboard();
 renderModules();             // damit Suche/Picker initial stimmen
@@ -3312,7 +3477,8 @@ if (typeof module !== "undefined" && module.exports) {
     taskCompletion, moduleProgress, overallProgress, computeGpa,
     isPassingGrade, formatDuration, escapeHtml, sanitizeUrl, sanitizeHexColor,
     migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
-    parseIcs, buildIcs,
+    parseIcs, buildIcs, lecturesSummary, ectsProgress, easterSunday,
+    germanHolidays, holidayName,
   };
 }
 

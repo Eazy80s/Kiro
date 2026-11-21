@@ -299,6 +299,20 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .task-opts .task-opt-url input { flex: 1; min-width: 0; padding: 5px 9px; font-size: 0.82rem; }
 .task-opts select { padding: 5px 8px; font-size: 0.82rem; }
 
+/* Lernplan-Überblick (Vorlesungs-Fortschritt in der Modulkarte) */
+.lecture-overview { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
+.lecture-overview:empty { display: none; }
+.lecture-label { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.lecture-label .ic { width: 0.9em; height: 0.9em; color: #3b82f6; }
+.lecture-label strong { color: var(--text); }
+.lecture-bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.lecture-fill { height: 100%; background: #3b82f6; border-radius: 999px; transition: width 0.4s ease; }
+
+/* ECTS-Studienziel im Dashboard */
+.ects-goal { margin-top: 10px; }
+.ects-goal .progress-label { font-size: 0.82rem; }
+.progress-fill.ects { background: linear-gradient(90deg, #16a34a, #22c55e); }
+
 /* Upcoming */
 .upcoming-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .upcoming-list li {
@@ -377,6 +391,13 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 }
 .cal-cell.search-hit { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.35); }
 .cal-cell.search-dim { opacity: 0.4; }
+/* Feiertage (bundesweit) */
+.cal-cell.holiday { background: rgba(239,68,68,0.06); }
+[data-theme="dark"] .cal-cell.holiday { background: rgba(239,68,68,0.12); }
+.cal-cell .holiday-dot { position: absolute; top: 3px; right: 4px; font-size: 0.7rem; color: #ef4444; }
+.cal-cell { position: relative; }
+.holiday-note { color: #b91c1c; font-size: 0.85rem; margin: 2px 0 8px; }
+[data-theme="dark"] .holiday-note { color: #fca5a5; }
 .cal-event {
   font-size: 0.66rem;
   padding: 2px 5px;
@@ -469,7 +490,12 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 }
 .module-section-head:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 .module-section-head .section-count { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
-.module-section-head .section-hint { color: var(--muted); font-weight: 400; font-size: 0.76rem; }
+.module-section-head .section-hint { color: var(--muted); font-weight: 400; font-size: 0.76rem; margin-left: auto; }
+/* Einklappbare Abschnitte (Modul-Archiv) */
+.module-section-head.collapsible { cursor: pointer; align-items: center; }
+.module-section-head.collapsible:hover { color: var(--accent); }
+.module-section-head .section-toggle { display: inline-flex; color: var(--muted); }
+.module-section-head .section-toggle .ic { width: 1em; height: 1em; }
 
 .module-card { padding: 15px 16px; }
 .module-card.completed { opacity: 0.72; }

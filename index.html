@@ -59,6 +59,13 @@
             </div>
             <p id="overall-summary" class="muted"></p>
             <p id="gpa-summary" class="muted"></p>
+            <div id="ects-goal" class="ects-goal" hidden>
+              <div class="progress-label">
+                <span id="ects-goal-label">ECTS-Ziel</span>
+                <span id="ects-goal-count"></span>
+              </div>
+              <div class="progress-bar"><div id="ects-goal-bar" class="progress-fill ects" style="width:0%"></div></div>
+            </div>
           </div>
         </section>
 
@@ -275,6 +282,16 @@
           <span id="conn-badge" class="conn-badge"></span>
           <p id="sync-status" class="muted" aria-live="polite"></p>
         </div>
+      </details>
+
+      <details class="settings-group">
+        <summary>Studienziel (ECTS)</summary>
+        <p class="muted">Lege dein Gesamtziel in ECTS fest (z. B. 180). Der Fortschritt im Dashboard zeigt dann, wie viele ECTS aus abgeschlossenen Modulen du schon erreicht hast. 0 = kein Ziel.</p>
+        <form id="ects-goal-form" class="pomo-settings">
+          <label>ECTS-Ziel <input type="number" id="ects-target" min="0" max="1000" step="1" placeholder="z. B. 180" /></label>
+          <button type="submit" class="primary-btn">Ziel speichern</button>
+        </form>
+        <p id="ects-goal-status" class="muted"></p>
       </details>
 
       <details class="settings-group">

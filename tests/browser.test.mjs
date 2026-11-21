@@ -73,6 +73,8 @@ check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
 // Lernplan: Typ (Vorlesung/Aufgabe) + Link erscheinen nur nach Laden der Beispieldaten,
 // daher hier nur grob prüfen, dass das Checklisten-Gerüst unverändert da ist.
 check(dom.includes('data-tab="modules"'), "Modul-Tab vorhanden");
+check(dom.includes('id="ects-goal"'), "ECTS-Ziel-Anzeige vorhanden");
+check(dom.includes('id="ects-goal-form"'), "ECTS-Ziel-Einstellung vorhanden");
 
 console.log(`\nBrowser-Smoke-Test: ${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

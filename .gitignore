@@ -12,3 +12,6 @@ Thumbs.db
 # Test-Artefakte
 .chrome-test-profile/
 node_modules/
+
+# Druckvorlagen: generierte Zwischen-HTML (aus print/generate.mjs regenerierbar)
+print/html/

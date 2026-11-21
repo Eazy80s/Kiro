@@ -5,10 +5,20 @@
   --text: #1a1a1a;
   --muted: #6b7280;
   --accent: #4f46e5;
+  --accent-hover: #4338ca;   /* dunkleres Akzent für Button-Hover */
   --accent-2: #16a34a;
   --danger: #dc2626;
   --border: #e5e7eb;
   --radius: 12px;
+  --radius-sm: 8px;
+  /* Status-/Typ-Farben als Tokens (Prüfung, Abgabe, Aufgabe, Warnung, Serie/Vorlesung).
+     fg = Vordergrund/Text, bg = heller Hintergrund (für Badges), solid = Vollton (Kalenderblöcke). */
+  --exam-fg: #b91c1c;    --exam-bg: #fee2e2;    --exam-solid: #dc2626;
+  --dead-fg: #b45309;    --dead-bg: #fef3c7;    --dead-solid: #d97706;
+  --task-fg: #6d28d9;    --task-bg: #ede9fe;    --task-solid: #7c3aed;
+  --info-fg: #1d4ed8;    --info-bg: #dbeafe;    --info-solid: #2563eb;
+  --warn: #f59e0b;       --warn-soft: rgba(245,158,11,0.35);
+  --marker: #ef4444;     /* Jetzt-Linie, Feiertags-Punkt */
   /* weiche Schatten für Tiefe (Visual Polish) */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.07);
@@ -23,9 +33,17 @@
   --text: #e2e8f0;
   --muted: #94a3b8;
   --accent: #818cf8;
+  --accent-hover: #6366f1;
   --accent-2: #4ade80;
   --danger: #f87171;
   --border: #334155;
+  /* Status-Tokens für Dunkelmodus: gedämpfte Hintergründe, hellere Schrift */
+  --exam-fg: #fecaca;    --exam-bg: #7f1d1d;    --exam-solid: #ef4444;
+  --dead-fg: #fed7aa;    --dead-bg: #7c2d12;    --dead-solid: #f59e0b;
+  --task-fg: #ddd6fe;    --task-bg: #4c1d95;    --task-solid: #8b5cf6;
+  --info-fg: #bfdbfe;    --info-bg: #1e3a8a;    --info-solid: #3b82f6;
+  --warn: #fbbf24;       --warn-soft: rgba(251,191,36,0.3);
+  --marker: #f87171;
   /* im Dunkelmodus kräftigere, aber weiche Schatten */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -319,10 +337,10 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .upcoming-list li:hover, .focus-list li:hover { box-shadow: var(--shadow-md); transform: translateX(2px); }
 .upcoming-list .ev-date { color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
 .tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); text-transform: capitalize; }
-.tag.exam { background: #fee2e2; color: #b91c1c; }
-.tag.deadline { background: #fef3c7; color: #b45309; }
-.tag.lecture { background: #dbeafe; color: #1d4ed8; }
-.tag.task { background: #ede9fe; color: #6d28d9; }
+.tag.exam { background: var(--exam-bg); color: var(--exam-fg); }
+.tag.deadline { background: var(--dead-bg); color: var(--dead-fg); }
+.tag.lecture { background: var(--info-bg); color: var(--info-fg); }
+.tag.task { background: var(--task-bg); color: var(--task-fg); }
 
 /* Calendar */
 .calendar-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -378,15 +396,14 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
   border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); font-size: 0.9rem;
 }
-.cal-cell.search-hit { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.35); }
+.cal-cell.search-hit { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn-soft); }
 .cal-cell.search-dim { opacity: 0.4; }
 /* Feiertage (bundesweit) */
 .cal-cell.holiday { background: rgba(239,68,68,0.06); }
 [data-theme="dark"] .cal-cell.holiday { background: rgba(239,68,68,0.12); }
-.cal-cell .holiday-dot { position: absolute; top: 3px; right: 4px; font-size: 0.7rem; color: #ef4444; }
+.cal-cell .holiday-dot { position: absolute; top: 3px; right: 4px; font-size: 0.7rem; color: var(--marker); }
 .cal-cell { position: relative; }
-.holiday-note { color: #b91c1c; font-size: 0.85rem; margin: 2px 0 8px; }
-[data-theme="dark"] .holiday-note { color: #fca5a5; }
+.holiday-note { color: var(--exam-fg); font-size: 0.85rem; margin: 2px 0 8px; }
 .cal-event {
   font-size: 0.66rem;
   padding: 2px 5px;
@@ -397,10 +414,10 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cal-event.exam { background: #dc2626; }
-.cal-event.deadline { background: #d97706; }
-.cal-event.lecture { background: #2563eb; }
-.cal-event.task { background: #7c3aed; }
+.cal-event.exam { background: var(--exam-solid); }
+.cal-event.deadline { background: var(--dead-solid); }
+.cal-event.lecture { background: var(--info-solid); }
+.cal-event.task { background: var(--task-solid); }
 .cal-more { font-size: 0.64rem; color: var(--muted); padding-left: 2px; }
 
 /* Day detail */
@@ -454,7 +471,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
   font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
-.primary-btn:hover { background: #4338ca; box-shadow: var(--shadow-md); }
+.primary-btn:hover { background: var(--accent-hover); box-shadow: var(--shadow-md); }
 .secondary-btn {
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
   padding: 9px 18px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500;
@@ -560,7 +577,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 /* Noten-Hinweis je Modul (Punkt 4) */
 .grade-hint { font-size: 0.82rem; margin: 4px 0 2px; }
 .grade-hint.ok { color: var(--accent-2); }
-.grade-hint.warn { color: #d97706; }
+.grade-hint.warn { color: var(--dead-solid); }
 .grade-hint.bad { color: var(--danger); }
 
 /* Pomodoro: Modul-Auswahl (Punkt 6) */
@@ -623,13 +640,10 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 
 /* Fälligkeits-Badges (Punkt 5) */
 .due-badge { font-size: 0.7rem; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
-.due-badge.overdue { background: #fee2e2; color: #b91c1c; }
-.due-badge.due-today { background: #ffedd5; color: #c2410c; }
-.due-badge.due-soon { background: #fef9c3; color: #854d0e; }
+.due-badge.overdue { background: var(--exam-bg); color: var(--exam-fg); }
+.due-badge.due-today { background: var(--dead-bg); color: var(--dead-fg); }
+.due-badge.due-soon { background: var(--dead-bg); color: var(--dead-fg); }
 .due-badge.due-later { background: var(--surface-2); color: var(--muted); }
-[data-theme="dark"] .due-badge.overdue { background: #7f1d1d; color: #fecaca; }
-[data-theme="dark"] .due-badge.due-today { background: #7c2d12; color: #fed7aa; }
-[data-theme="dark"] .due-badge.due-soon { background: #713f12; color: #fde68a; }
 .overdue-head { color: var(--danger); }
 #overdue-list .focus-list li { border-left-color: var(--danger); }
 
@@ -676,8 +690,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .gc-row { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
 .gc-label { flex: 1; min-width: 120px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
 .gc-grade, .gc-weight { width: 90px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
-.gc-warn { font-size: 0.78rem; color: #b45309; margin: 2px 0 6px; }
-[data-theme="dark"] .gc-warn { color: #fde68a; }
+.gc-warn { font-size: 0.78rem; color: var(--dead-fg); margin: 2px 0 6px; }
 
 /* Eigene Terminfarbe (Punkt 8) */
 .color-label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
@@ -686,7 +699,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Online/Offline-Badge (Punkt 3) */
 .conn-badge { display: inline-block; font-size: 0.8rem; margin: 6px 0; }
 .conn-badge.online { color: var(--accent-2); }
-.conn-badge.offline { color: #d97706; }
+.conn-badge.offline { color: var(--dead-solid); }
 
 /* Lern-Serie (Punkt 7) */
 .study-streak { font-size: 0.9rem; font-weight: 600; margin-top: -4px; margin-bottom: 8px; }
@@ -794,23 +807,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dash-block h2 { margin-top: 0; }
 .dash-block + .dash-block { margin-top: 16px; }
 .dash-full { width: 100%; }
+.dash-block[hidden] { display: none; }
 
-@media (min-width: 820px) {
+/* Layout-Umschalter (1/2 Spalten). Standardmäßig versteckt — nur eingeblendet,
+   wenn genug Breite für zwei Spalten da ist (Laptop/Tablet/iPhone-Querformat). */
+.dash-toolbar { display: none; justify-content: flex-end; margin-bottom: 10px; }
+.dash-col-toggle { display: inline-flex; gap: 4px; }
+.dash-col-toggle .icon-btn { width: auto; min-width: 40px; padding: 0 10px; font-size: 0.9rem; letter-spacing: 1px; }
+.dash-col-toggle .icon-btn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Zwei Spalten nur, wenn (a) genug Breite UND (b) der Nutzer sie gewählt hat. */
+@media (min-width: 720px) {
   main { max-width: 980px; }
-  .dash-grid {
+  .dash-toolbar { display: flex; }
+  .dash-grid[data-cols="2"] {
     column-count: 2;
     column-gap: 24px;
   }
-  .dash-block {
-    break-inside: avoid;          /* ein Block wird nicht über Spalten zerrissen */
+  .dash-grid[data-cols="2"] .dash-block {
+    break-inside: avoid;
     -webkit-column-break-inside: avoid;
     page-break-inside: avoid;
-    margin: 0 0 16px;             /* Abstand zwischen gestapelten Blöcken */
-    display: inline-block;        /* zuverlässiges break-inside in allen Browsern */
+    margin: 0 0 16px;
+    display: inline-block;
     width: 100%;
   }
-  /* ausgeblendete Blöcke (z. B. „Überfällig“ wenn leer) müssen weg bleiben */
-  .dash-block[hidden] { display: none; }
 }
 
 /* ============================================================
@@ -930,12 +951,12 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .sem-meta { color: var(--muted); font-size: 0.76rem; }
 .sem-bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
 .sem-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
-.sem-fill.excellent { background: #16a34a; }
+.sem-fill.excellent { background: var(--accent-2); }
 .sem-fill.good { background: #65a30d; }
-.sem-fill.ok { background: #d97706; }
+.sem-fill.ok { background: var(--dead-solid); }
 .sem-fill.weak { background: var(--danger); }
 .sem-trend { font-size: 0.78rem; font-weight: 600; margin-left: 4px; }
-.sem-trend.up { color: #16a34a; }
+.sem-trend.up { color: var(--accent-2); }
 .sem-trend.down { color: var(--danger); }
 .sem-trend.flat { color: var(--muted); }
 
@@ -967,7 +988,7 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .wk-colhead.today .wk-num { color: var(--accent); }
 .wk-colhead.selected { background: #eef2ff; border-color: var(--accent); }
 [data-theme="dark"] .wk-colhead.selected { background: rgba(129,140,248,0.18); }
-.wk-colhead.search-hit, .wk-allday-cell.search-hit, .wk-daycol.search-hit { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.3); }
+.wk-colhead.search-hit, .wk-allday-cell.search-hit, .wk-daycol.search-hit { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn-soft); }
 .wk-colhead.search-dim, .wk-allday-cell.search-dim, .wk-daycol.search-dim { opacity: 0.4; }
 
 .wk-allday-label { font-size: 0.68rem; color: var(--muted); display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; }
@@ -1001,17 +1022,17 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
   overflow: hidden; color: #fff; background: var(--accent);
   box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.15));
 }
-.wk-block.exam { background: #dc2626; }
-.wk-block.deadline { background: #d97706; }
-.wk-block.task { background: var(--accent-2, #6366f1); }
+.wk-block.exam { background: var(--exam-solid); }
+.wk-block.deadline { background: var(--dead-solid); }
+.wk-block.task { background: var(--task-solid); }
 .wk-block.done { opacity: 0.55; text-decoration: line-through; }
 .wk-block-time { display: block; font-weight: 600; opacity: 0.95; }
 /* Überschneidung: Warn-Rand + kleines ⚠ */
-.wk-block.overlap { outline: 2px solid #f59e0b; outline-offset: -2px; }
+.wk-block.overlap { outline: 2px solid var(--warn); outline-offset: -2px; }
 .wk-clash { font-size: 0.8em; }
 /* „Jetzt"-Linie */
-.wk-now-line { position: absolute; left: 0; right: 0; height: 2px; background: #ef4444; z-index: 5; pointer-events: none; }
-.wk-now-line::before { content: ""; position: absolute; left: -1px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; }
+.wk-now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--marker); z-index: 5; pointer-events: none; }
+.wk-now-line::before { content: ""; position: absolute; left: -1px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--marker); }
 
 @media (max-width: 680px) {
   /* Schmale Geräte: Raster horizontal scrollbar, Spalten mit Mindestbreite */

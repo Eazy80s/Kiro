@@ -43,15 +43,23 @@
     <main>
     <!-- ÜBERSICHT -->
     <section id="dashboard" class="tab-panel active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
+      <!-- Layout-Umschalter: 1 oder 2 Spalten (nur bei genug Breite sichtbar) -->
+      <div class="dash-toolbar">
+        <div class="dash-col-toggle" role="group" aria-label="Spaltenlayout der Übersicht">
+          <button id="dash-col-1" class="icon-btn" title="Eine Spalte" aria-label="Übersicht einspaltig" aria-pressed="true">▯</button>
+          <button id="dash-col-2" class="icon-btn" title="Zwei Spalten" aria-label="Übersicht zweispaltig" aria-pressed="false">▯▯</button>
+        </div>
+      </div>
+
       <!-- Prüfungs-Countdown (volle Breite) -->
       <div id="countdown-card" class="countdown-card dash-full"></div>
 
-      <div class="dash-grid">
+      <div class="dash-grid" id="dash-grid">
         <section class="dash-block">
           <h2>Gesamtfortschritt</h2>
           <div class="progress-card">
             <div class="progress-label">
-              <span>Gesamter Studienfortschritt <span id="overall-mode" class="muted-inline"></span></span>
+              <span>Gesamter Studienfortschritt</span>
               <span id="overall-percent">0%</span>
             </div>
             <div class="progress-bar big">

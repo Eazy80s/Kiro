@@ -320,6 +320,11 @@ const lay = api.layoutOverlaps;
   eq(d3.weekGrid, { startHour: 8, endHour: 21, defaultDurationMin: 60 }, "migrate: ungültiges Raster → Standard");
 }
 
+/* ---- migrate: Dashboard-Spaltenlayout ---- */
+eq(api.migrate({}).dashCols, 1, "migrate: Dashboard-Spalten Standard = 1");
+eq(api.migrate({ dashCols: 2 }).dashCols, 2, "migrate: dashCols=2 bleibt");
+eq(api.migrate({ dashCols: 5 }).dashCols, 1, "migrate: ungültige dashCols → 1");
+
 /* ---- ECTS-Studienziel ---- */
 const ep = api.ectsProgress;
 {

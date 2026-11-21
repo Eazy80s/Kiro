@@ -82,6 +82,8 @@ function migrate(data) {
   if (!Array.isArray(data.events)) data.events = [];
   // Studienziel in ECTS (z. B. 180). 0/leer = kein Ziel gesetzt.
   data.ectsTarget = Number(data.ectsTarget) > 0 ? Number(data.ectsTarget) : 0;
+  // Dashboard-Spalten: 1 (Standard, ruhig) oder 2 (kompakt, nebeneinander).
+  data.dashCols = (Number(data.dashCols) === 2) ? 2 : 1;
   // Einstellungen des Wochen-Stundenrasters: Fenster (Start/Ende-Stunde) und
   // Standard-Dauer neuer/zeitlich gesetzter Blöcke in Minuten.
   if (!data.weekGrid || typeof data.weekGrid !== "object") data.weekGrid = {};
@@ -659,7 +661,6 @@ function renderDashboard() {
   const { pct, weighted } = overallProgress();
   document.getElementById("overall-percent").textContent = pct + "%";
   document.getElementById("overall-bar").style.width = pct + "%";
-  document.getElementById("overall-mode").textContent = "";
 
   const completedCount = state.modules.filter((m) => m.completed).length;
   document.getElementById("overall-summary").textContent = state.modules.length
@@ -686,11 +687,23 @@ function renderDashboard() {
     }
   }
 
+  applyDashCols();
   renderPinnedModules();
   renderOverdue();
   renderPinnedTasks();
   renderAgenda();
   renderSemesterStats();
+}
+
+// Spaltenlayout der Übersicht anwenden (1 oder 2) und die Umschalt-Buttons spiegeln.
+function applyDashCols() {
+  const grid = document.getElementById("dash-grid");
+  const cols = state.dashCols === 2 ? 2 : 1;
+  if (grid) grid.setAttribute("data-cols", String(cols));
+  const b1 = document.getElementById("dash-col-1");
+  const b2 = document.getElementById("dash-col-2");
+  if (b1) b1.setAttribute("aria-pressed", cols === 1 ? "true" : "false");
+  if (b2) b2.setAttribute("aria-pressed", cols === 2 ? "true" : "false");
 }
 
 // Noten-Verlauf je Semester (Dashboard). Zeigt pro Semester den gewichteten
@@ -728,6 +741,10 @@ function renderSemesterStats() {
   }).join("");
 }
 
+// Merkt die im Countdown gezeigte Prüfung (Id + Datum), damit „Anstehend" sie
+// nicht doppelt listet. Wird von renderCountdown gesetzt.
+let countdownShownExam = null;
+
 function renderCountdown() {
   const card = document.getElementById("countdown-card");
   const today = todayIso();
@@ -739,6 +756,7 @@ function renderCountdown() {
       nextExam = e; nextExamDate = occ;
     }
   });
+  countdownShownExam = nextExam ? { id: nextExam.id, date: nextExamDate } : null;
 
   if (!nextExam) {
     card.className = "countdown-card none";
@@ -1683,6 +1701,17 @@ document.getElementById("today-btn").addEventListener("click", () => {
   calMonth = new Date().getMonth();
   renderCalendar();
 });
+
+// Spaltenlayout-Umschalter der Übersicht (1 ⇄ 2 Spalten; Wahl wird gespeichert).
+const dashCol1 = document.getElementById("dash-col-1");
+const dashCol2 = document.getElementById("dash-col-2");
+function setDashCols(n) {
+  state.dashCols = n === 2 ? 2 : 1;
+  saveState();
+  applyDashCols();
+}
+if (dashCol1) dashCol1.addEventListener("click", () => setDashCols(1));
+if (dashCol2) dashCol2.addEventListener("click", () => setDashCols(2));
 
 // Schnelleingabe im Dashboard: Aufgabe für HEUTE direkt anlegen (Fokus heute).
 const quickTaskForm = document.getElementById("quick-task-form");
@@ -3778,8 +3807,16 @@ function renderAgenda() {
   let d = new Date(today + "T00:00:00");
   for (let i = 0; i < 7; i++) {
     const iso = isoOf(d);
-    eventsOnDate(iso).forEach((e) => week.push({ iso, time: e.startTime, kind: e.type, text: e.title }));
-    tasksOnDate(iso).forEach(({ module, task }) => { if (!task.done) week.push({ iso, time: task.startTime, kind: "task", text: `${task.text} · ${module.name}` }); });
+    eventsOnDate(iso).forEach((e) => {
+      // Die vom Countdown gezeigte Prüfung hier NICHT doppeln.
+      if (countdownShownExam && e.id === countdownShownExam.id && iso === countdownShownExam.date) return;
+      week.push({ iso, time: e.startTime, kind: e.type, text: e.title });
+    });
+    tasksOnDate(iso).forEach(({ module, task }) => {
+      // Heute geplante Aufgaben stehen bereits in „Fokus heute" → hier auslassen.
+      if (iso === today) return;
+      if (!task.done) week.push({ iso, time: task.startTime, kind: "task", text: `${task.text} · ${module.name}` });
+    });
     d.setDate(d.getDate() + 1);
   }
   week.sort((a, b) => (a.iso + (a.time || "99:99")).localeCompare(b.iso + (b.time || "99:99")));

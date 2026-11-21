@@ -19,7 +19,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **📊 Noten je Semester** – Verlauf des ECTS-gewichteten Schnitts pro Semester mit Trend gegenüber dem Vorsemester (im Dashboard, ab zwei benoteten Semestern).
 - **🔗 Modul-Weblinks im Dashboard** – bei einem angehefteten Modul werden eingetragene Weblinks als anklickbare Chips auch unter „Aktuell in Bearbeitung" angezeigt.
 - **⏳ Prüfungs-Countdown** und **Demnächst**-Liste.
-- **🌓 Theme** – hell / dunkel / automatisch.
+- **🌓 Theme** – hell / dunkel / automatisch; Übersicht wahlweise **ein- oder zweispaltig** (umschaltbar, bei genug Breite inkl. iPhone-Querformat).
 - **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben.
 - **🎓 Teilnoten** – Endnote je Modul aus gewichteten Komponenten (z. B. Klausur 70 % + Übung 30 %).
 - **📈 Noten-Prognose** – benötigter Schnitt für ein Ziel + bester/schlechtester möglicher Endschnitt.

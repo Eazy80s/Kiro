@@ -857,6 +857,13 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .settings-group > :not(summary), .pomo-settings-details > :not(summary) { margin-bottom: 12px; }
 .pomo-settings-details { margin-top: 10px; text-align: left; }
 
+/* Unterabschnitte innerhalb einer Einstellungs-Gruppe (z. B. Ziele & Erinnerungen) */
+.settings-sub { padding: 12px 0; }
+.settings-sub + .settings-sub { border-top: 1px solid var(--border); }
+.settings-sub-head { font-size: 0.86rem; font-weight: 600; margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+.settings-sub > :not(.settings-sub-head) { margin-bottom: 10px; }
+.settings-sub > :last-child { margin-bottom: 0; }
+
 /* Pomodoro: Verlauf + je Modul nebeneinander auf breiten Screens (#5) */
 .pomo-two-col { display: block; }
 .pomo-col h2 { margin-top: 18px; }

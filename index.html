@@ -289,32 +289,36 @@
       </details>
 
       <details class="settings-group">
-        <summary>Studienziel (ECTS)</summary>
-        <p class="muted">Lege dein Gesamtziel in ECTS fest (z. B. 180). Der Fortschritt im Dashboard zeigt dann, wie viele ECTS aus abgeschlossenen Modulen du schon erreicht hast. 0 = kein Ziel.</p>
-        <form id="ects-goal-form" class="pomo-settings">
-          <label>ECTS-Ziel <input type="number" id="ects-target" min="0" max="1000" step="1" placeholder="z. B. 180" /></label>
-          <button type="submit" class="primary-btn">Ziel speichern</button>
-        </form>
-        <p id="ects-goal-status" class="muted"></p>
-      </details>
+        <summary>Ziele &amp; Erinnerungen</summary>
 
-      <details class="settings-group">
-        <summary>Lernzeit-Ziele</summary>
-        <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
-        <form id="goals-form" class="pomo-settings">
-          <label>Tag <input type="number" id="goal-day" min="1" max="24" step="0.5" /></label>
-          <label>Woche <input type="number" id="goal-week" min="1" max="168" step="1" /></label>
-          <label>Monat <input type="number" id="goal-month" min="1" max="744" step="1" /></label>
-          <label>Jahr <input type="number" id="goal-year" min="1" max="8760" step="1" /></label>
-          <button type="submit" class="primary-btn">Ziele speichern</button>
-        </form>
-        <p id="goals-status" class="muted"></p>
-      </details>
+        <div class="settings-sub">
+          <h4 class="settings-sub-head">🎓 Studienziel (ECTS)</h4>
+          <p class="muted">Lege dein Gesamtziel in ECTS fest (z. B. 180). Der Fortschritt im Dashboard zeigt dann, wie viele ECTS aus abgeschlossenen Modulen du schon erreicht hast. 0 = kein Ziel.</p>
+          <form id="ects-goal-form" class="pomo-settings">
+            <label>ECTS-Ziel <input type="number" id="ects-target" min="0" max="1000" step="1" placeholder="z. B. 180" /></label>
+            <button type="submit" class="primary-btn">Ziel speichern</button>
+          </form>
+          <p id="ects-goal-status" class="muted"></p>
+        </div>
 
-      <details class="settings-group">
-        <summary>Erinnerungen</summary>
-        <p class="muted">Erhalte eine System-Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Die Benachrichtigung ist anklickbar und öffnet die App. Hinweis: Browser (besonders auf dem iPhone) liefern solche Erinnerungen zuverlässig nur aus, während die App bzw. ein Tab geöffnet ist oder kürzlich geöffnet war — echtes Hintergrund-Push bei komplett geschlossener App ist ohne eigenen Server nicht möglich.</p>
-        <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
+        <div class="settings-sub">
+          <h4 class="settings-sub-head">⏱️ Lernzeit-Ziele</h4>
+          <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
+          <form id="goals-form" class="pomo-settings">
+            <label>Tag <input type="number" id="goal-day" min="1" max="24" step="0.5" /></label>
+            <label>Woche <input type="number" id="goal-week" min="1" max="168" step="1" /></label>
+            <label>Monat <input type="number" id="goal-month" min="1" max="744" step="1" /></label>
+            <label>Jahr <input type="number" id="goal-year" min="1" max="8760" step="1" /></label>
+            <button type="submit" class="primary-btn">Ziele speichern</button>
+          </form>
+          <p id="goals-status" class="muted"></p>
+        </div>
+
+        <div class="settings-sub">
+          <h4 class="settings-sub-head">🔔 Erinnerungen</h4>
+          <p class="muted">Erhalte eine System-Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Die Benachrichtigung ist anklickbar und öffnet die App. Hinweis: Browser (besonders auf dem iPhone) liefern solche Erinnerungen zuverlässig nur aus, während die App bzw. ein Tab geöffnet ist oder kürzlich geöffnet war — echtes Hintergrund-Push bei komplett geschlossener App ist ohne eigenen Server nicht möglich.</p>
+          <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
+        </div>
       </details>
 
       <details class="settings-group">

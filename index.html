@@ -51,6 +51,9 @@
         </div>
       </div>
 
+      <!-- Onboarding bei komplett leerer App (keine Module/Termine) -->
+      <div id="dash-onboarding" class="dash-onboarding" hidden></div>
+
       <!-- Prüfungs-Countdown (volle Breite) -->
       <div id="countdown-card" class="countdown-card dash-full"></div>
 
@@ -361,6 +364,18 @@
           </label>
         </div>
         <p id="data-status" class="muted"></p>
+      </details>
+
+      <details class="settings-group" id="shortcuts-group">
+        <summary>Tastenkürzel</summary>
+        <p class="muted">Am Computer schneller navigieren (in Eingabefeldern deaktiviert):</p>
+        <ul class="shortcut-list">
+          <li><kbd>1</kbd>–<kbd>5</kbd><span>Tabs wechseln (Übersicht … Einstellungen)</span></li>
+          <li><kbd>N</kbd><span>Neues Modul anlegen</span></li>
+          <li><kbd>/</kbd><span>Modulsuche fokussieren</span></li>
+          <li><kbd>←</kbd> <kbd>→</kbd><span>In der Tableiste blättern</span></li>
+          <li><kbd>Esc</kbd><span>Eingabefeld verlassen</span></li>
+        </ul>
       </details>
 
       <details class="settings-group">

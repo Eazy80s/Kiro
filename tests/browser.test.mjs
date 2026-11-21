@@ -73,6 +73,8 @@ check(dom.includes('id="weekgrid-form"'), "Wochenraster-Einstellungen vorhanden"
 check(dom.includes('id="pomo-task"'), "Pomodoro-Aufgabenauswahl vorhanden");
 check(dom.includes('id="dash-col-1"') && dom.includes('id="dash-col-2"'), "Dashboard-Spalten-Umschalter vorhanden");
 check(!dom.includes('id="overall-mode"'), "Totes #overall-mode-Markup entfernt");
+check(dom.includes('id="dash-onboarding"'), "Onboarding-Block (leere App) vorhanden");
+check(dom.includes('id="shortcuts-group"'), "Tastenkürzel-Übersicht vorhanden");
 check(dom.includes('id="ics-import-file"'), "ICS-Import vorhanden");
 check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
 // Lernplan: Typ (Vorlesung/Aufgabe) + Link erscheinen nur nach Laden der Beispieldaten,

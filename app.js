@@ -177,6 +177,24 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Zentrale Factory für eine Checklisten-Aufgabe. EINZIGE Stelle, die das
+// Task-Objekt aufbaut — so können die verschiedenen Eingabepfade (Modulkarte,
+// Schnelleingabe „Fokus heute", Kalender-„Hinzufügen") nicht auseinanderlaufen
+// (z. B. ein Feld vergessen). Felder werden gehärtet wie in migrate().
+function makeTask(fields) {
+  const f = fields || {};
+  return {
+    id: uid(),
+    text: String(f.text || "").trim(),
+    done: false,
+    date: f.date || null,
+    startTime: normalizeTime(f.startTime),
+    endTime: normalizeTime(f.endTime),
+    url: sanitizeUrl(f.url) || "",
+    subtasks: [],
+  };
+}
+
 /* ---------- Progress helpers ---------- */
 // A task with subtasks contributes fractionally (share of its subtasks done);
 // a task without subtasks contributes 1 when done, 0 otherwise. The module
@@ -656,6 +674,33 @@ if (window.matchMedia) {
    DASHBOARD
    ============================================================ */
 function renderDashboard() {
+  // Leere App (keine Module & keine Termine) → einladendes Onboarding statt
+  // mehrerer „Noch nichts da"-Platzhalter.
+  const onbox = document.getElementById("dash-onboarding");
+  const grid = document.getElementById("dash-grid");
+  const cdCard = document.getElementById("countdown-card");
+  const empty = state.modules.length === 0 && state.events.length === 0;
+  if (onbox) {
+    onbox.hidden = !empty;
+    if (grid) grid.hidden = empty;
+    if (cdCard) cdCard.hidden = empty;
+    if (empty) {
+      onbox.innerHTML = `
+        <div class="onb-icon">🎓</div>
+        <h2 class="onb-title">Willkommen im Studien-Tracker</h2>
+        <p class="onb-text">Lege dein erstes Modul an, um loszulegen — Fortschritt, Noten, Aufgaben und Kalender bauen darauf auf.</p>
+        <div class="onb-actions">
+          <button id="onb-new-module" class="primary-btn">Erstes Modul anlegen</button>
+          <button id="onb-sample" class="secondary-btn">Beispieldaten laden</button>
+        </div>`;
+      const nm = document.getElementById("onb-new-module");
+      if (nm) nm.addEventListener("click", () => { switchTab("modules"); const el = document.getElementById("module-name"); if (el) el.focus(); });
+      const sm = document.getElementById("onb-sample");
+      if (sm) sm.addEventListener("click", loadSampleData);
+      return; // restliche Blöcke überspringen — sie wären alle leer
+    }
+  }
+
   renderCountdown();
 
   const { pct, weighted } = overallProgress();
@@ -1196,11 +1241,19 @@ function renderWeek() {
   document.getElementById("selected-day-label").textContent =
     selectedDate ? `Ausgewählt: ${formatDate(selectedDate)}` : "";
 
+  // Auf schmalen Screens (iPhone Hochformat) nur EINEN Tag zeigen — ein
+  // 7-Spalten-Raster ist dort unlesbar. Der gezeigte Tag ist `selectedDate`;
+  // Navigation über die vorhandenen Tag-Pfeile ‹ ›.
+  const singleDay = typeof window !== "undefined" && window.matchMedia
+    && window.matchMedia("(max-width: 560px)").matches;
+
   // Pro Tag die Posten einsammeln und in „mit Zeit" / „ohne Zeit" aufteilen.
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(start + "T00:00:00"); d.setDate(d.getDate() + i);
     const iso = isoOf(d);
+    // Einzeltag-Modus: nur den ausgewählten Tag aufbauen.
+    if (singleDay && iso !== (selectedDate || today)) continue;
     const items = [];
     eventsOnDate(iso).forEach((e) => items.push({
       kind: "event", id: e.id, type: e.type, title: e.title,
@@ -1213,6 +1266,12 @@ function renderWeek() {
     }));
     const isMatch = calendarFilter && dayMatchesQuery(eventsOnDate(iso), tasksOnDate(iso), calendarFilter);
     days.push({ iso, d, items, isMatch, isDimmed: calendarFilter && !isMatch });
+  }
+
+  // Im Einzeltag-Modus den Titel auf den Tag setzen (statt Wochenbereich).
+  if (singleDay && days[0]) {
+    const WDlong = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+    document.getElementById("calendar-title").textContent = `${WDlong[days[0].d.getDay()]} ${fmtShort(days[0].d)}`;
   }
 
   // Einfacher Block für die „ohne Zeit"-Leiste (keine Rasterposition).
@@ -1233,6 +1292,8 @@ function renderWeek() {
 
   // --- Aufbau: Kopfzeile, Ganztags-Leiste, Stundenraster ---
   wrap.innerHTML = "";
+  wrap.classList.toggle("single-day", singleDay);
+  wrap.style.setProperty("--wk-days", String(days.length)); // 1 (mobil) oder 7
   const colClass = (day) => "wk-col"
     + (day.iso === today ? " today" : "")
     + (day.iso === selectedDate ? " selected" : "")
@@ -1723,7 +1784,7 @@ if (quickTaskForm) {
     const text = (textEl.value || "").trim();
     const mod = state.modules.find((m) => m.id === modSel.value);
     if (!text || !mod) { if (!state.modules.length) showSnackbar("Lege zuerst ein Modul an, dann kannst du Aufgaben hinzufügen."); return; }
-    mod.tasks.push({ id: uid(), text, done: false, date: todayIso(), startTime: null, endTime: null, url: "", subtasks: [] });
+    mod.tasks.push(makeTask({ text, date: todayIso() }));
     saveState();
     textEl.value = "";
     renderDashboard();
@@ -1784,7 +1845,7 @@ if (entryForm) entryForm.addEventListener("submit", (e) => {
     const modSel = document.getElementById("entry-module");
     const mod = state.modules.find((m) => m.id === modSel.value);
     if (!mod) { showSnackbar("Bitte ein Modul wählen (oder zuerst eins anlegen)."); return; }
-    mod.tasks.push({ id: uid(), text: title, done: false, date, startTime, endTime, url, subtasks: [] });
+    mod.tasks.push(makeTask({ text: title, date, startTime, endTime, url }));
   } else {
     const repeat = document.getElementById("entry-repeat").value || null;
     const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
@@ -2360,7 +2421,7 @@ function renderModuleCard(m) {
     const input = ev.target.querySelector("input");
     const text = input.value.trim();
     if (!text) return;
-    m.tasks.push({ id: uid(), text, done: false, date: null, startTime: null, endTime: null, url: "", subtasks: [] });
+    m.tasks.push(makeTask({ text }));
     saveState(); renderModules();
   });
 
@@ -3883,7 +3944,7 @@ if (typeof module !== "undefined" && module.exports) {
     migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
-    itemSpan, layoutOverlaps,
+    itemSpan, layoutOverlaps, makeTask,
   };
 }
 

@@ -320,6 +320,21 @@ const lay = api.layoutOverlaps;
   eq(d3.weekGrid, { startHour: 8, endHour: 21, defaultDurationMin: 60 }, "migrate: ungültiges Raster → Standard");
 }
 
+/* ---- makeTask: zentrale Aufgaben-Factory (härtet Zeit & Link) ---- */
+const mkt = api.makeTask;
+{
+  const t = mkt({ text: "  Kapitel 3  ", date: "2026-11-25", startTime: "9:00", endTime: "x", url: "moodle.hs.de/k" });
+  eq(t.text, "Kapitel 3", "makeTask: Text getrimmt");
+  eq(t.done, false, "makeTask: done=false");
+  eq([t.startTime, t.endTime], ["09:00", null], "makeTask: Zeit normalisiert, ungültiges Ende → null");
+  eq(t.url, "https://moodle.hs.de/k", "makeTask: Link gehärtet (https ergänzt)");
+  eq(Array.isArray(t.subtasks) && t.subtasks.length === 0, true, "makeTask: leere Subtasks");
+  const t2 = mkt({ text: "X", url: "javascript:alert(1)" });
+  eq(t2.url, "", "makeTask: javascript:-Link verworfen");
+  const t3 = mkt({ text: "Y" });
+  eq([t3.date, t3.startTime, t3.endTime], [null, null, null], "makeTask: Defaults ohne Angaben");
+}
+
 /* ---- migrate: Dashboard-Spaltenlayout ---- */
 eq(api.migrate({}).dashCols, 1, "migrate: Dashboard-Spalten Standard = 1");
 eq(api.migrate({ dashCols: 2 }).dashCols, 2, "migrate: dashCols=2 bleibt");

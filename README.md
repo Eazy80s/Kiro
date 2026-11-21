@@ -4,7 +4,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 
 ## Funktionen
 
-- **📅 Kalender** – **Monatsansicht** und **Wochenansicht als Stundenraster** (Zeitfenster & Standard-Blockdauer einstellbar): Posten mit Von–Bis-Uhrzeit erscheinen als Blöcke, Posten ohne feste Zeit in einer Leiste darüber. **Überschneidungs-Warnung** (sich zeitlich überlappende Blöcke stehen nebeneinander, markiert mit ⚠), **„Jetzt"-Linie**, **Suche**, **ICS-Import/-Export**, **Feiertage** und **Drag & Drop** (Tag und Uhrzeit). Druckbarer **Wochenplan**.
+- **📅 Kalender** – **Monatsansicht** und **Wochenansicht als Stundenraster** (Zeitfenster & Standard-Blockdauer einstellbar): Posten mit Von–Bis-Uhrzeit erscheinen als Blöcke, Posten ohne feste Zeit in einer Leiste darüber. Auf schmalen Handy-Screens zeigt die Wochenansicht automatisch **einen Tag** (Navigation per ‹ ›) statt sieben enger Spalten. **Überschneidungs-Warnung** (sich zeitlich überlappende Blöcke stehen nebeneinander, markiert mit ⚠), **„Jetzt"-Linie**, **Suche**, **ICS-Import/-Export**, **Feiertage** und **Drag & Drop** (Tag und Uhrzeit). Druckbarer **Wochenplan**.
 - **➕ Ein Hinzufügen-Formular** – zwei Arten: **Aufgabe** (einem Modul zugeordnet, mit Von–Bis-Zeit und Link) oder **Prüfung** (Kalendertermin mit Wiederholung/Farbe). Aufgaben erscheinen zugleich in der Modul-Checkliste, im Kalender und in „Fokus heute".
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.

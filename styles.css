@@ -803,6 +803,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    CSS-„columns“ statt Grid: Blöcke füllen die Spalten nach Höhe auf
    (Masonry-artig), damit keine Lücken entstehen und beide Spalten
    etwa gleich hoch werden. */
+/* Onboarding-Block bei leerer App */
+.dash-onboarding {
+  text-align: center; padding: 40px 24px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.dash-onboarding[hidden] { display: none; }
+.onb-icon { font-size: 2.6rem; line-height: 1; margin-bottom: 10px; }
+.onb-title { font-size: 1.15rem !important; font-weight: 700 !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--text) !important; margin: 0 0 6px !important; }
+.onb-text { color: var(--muted); font-size: 0.9rem; max-width: 360px; margin: 0 auto 18px; }
+.onb-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
 .dash-grid { display: block; }
 .dash-block h2 { margin-top: 0; }
 .dash-block + .dash-block { margin-top: 16px; }
@@ -882,6 +894,18 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .settings-group[open] > summary::before, .pomo-settings-details[open] > summary::before { transform: rotate(90deg); }
 .settings-group > :not(summary), .pomo-settings-details > :not(summary) { margin-bottom: 12px; }
 .pomo-settings-details { margin-top: 10px; text-align: left; }
+
+/* Tastenkürzel-Liste */
+.shortcut-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.shortcut-list li { display: flex; align-items: center; gap: 10px; font-size: 0.86rem; }
+.shortcut-list span { color: var(--muted); }
+.shortcut-list kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+  padding: 2px 7px; min-width: 20px; text-align: center; color: var(--text);
+}
+/* Tastenkürzel sind nur mit physischer Tastatur relevant → auf Touch/Hochformat ausblenden */
+@media (hover: none) and (pointer: coarse) { #shortcuts-group { display: none; } }
 
 /* Unterabschnitte innerhalb einer Einstellungs-Gruppe (z. B. Ziele & Erinnerungen) */
 .settings-sub { padding: 12px 0; }
@@ -971,9 +995,9 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 
 /* Hybride Wochenansicht: Kopfzeile + „ohne Zeit"-Leiste + Stundenraster 08–21.
    Einheitliches 8-Spalten-Raster: 1 schmale Zeitachse + 7 Tage. */
-.calendar-week { display: block; }
+.calendar-week { display: block; --wk-days: 7; }
 .wk-grid-head, .wk-allday {
-  display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 4px;
+  display: grid; grid-template-columns: 52px repeat(var(--wk-days), 1fr); gap: 4px;
 }
 .wk-allday { margin: 4px 0 6px; }
 .wk-colhead {
@@ -998,8 +1022,8 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 }
 .wk-allday-cell .cal-event { white-space: normal; font-size: 0.68rem; }
 
-/* Stundenraster: Zeitachse + 7 Tagesspalten, Zeilenhöhe via --wk-row-px. */
-.wk-grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 4px; }
+/* Stundenraster: Zeitachse + N Tagesspalten (7, mobil 1), Zeilenhöhe via --wk-row-px. */
+.wk-grid { display: grid; grid-template-columns: 52px repeat(var(--wk-days), 1fr); gap: 4px; }
 .wk-axis { display: flex; flex-direction: column; }
 .wk-hour-label {
   height: var(--wk-row-px); font-size: 0.66rem; color: var(--muted);
@@ -1035,7 +1059,16 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
 .wk-now-line::before { content: ""; position: absolute; left: -1px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--marker); }
 
 @media (max-width: 680px) {
-  /* Schmale Geräte: Raster horizontal scrollbar, Spalten mit Mindestbreite */
-  .calendar-week { overflow-x: auto; }
-  .wk-grid-head, .wk-allday, .wk-grid { grid-template-columns: 44px repeat(7, minmax(84px, 1fr)); min-width: 640px; }
+  /* Schmale Geräte: 7-Tage-Raster horizontal scrollbar, Spalten mit Mindestbreite.
+     Gilt NICHT im Einzeltag-Modus (dort füllt die eine Spalte die Breite). */
+  .calendar-week:not(.single-day) { overflow-x: auto; }
+  .calendar-week:not(.single-day) .wk-grid-head,
+  .calendar-week:not(.single-day) .wk-allday,
+  .calendar-week:not(.single-day) .wk-grid {
+    grid-template-columns: 44px repeat(7, minmax(84px, 1fr)); min-width: 640px;
+  }
 }
+/* Einzeltag-Modus (mobil): schmalere Zeitachse, volle Breite, keine Scrollleiste. */
+.calendar-week.single-day .wk-grid-head,
+.calendar-week.single-day .wk-allday,
+.calendar-week.single-day .wk-grid { grid-template-columns: 44px 1fr; }

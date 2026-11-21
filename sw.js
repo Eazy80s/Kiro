@@ -1,5 +1,5 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v20";
+const CACHE = "study-tracker-v21";
 
 // Eigene Assets (same-origin) — werden beim Install vorab gecacht.
 const ASSETS = [

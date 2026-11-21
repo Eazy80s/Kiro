@@ -107,7 +107,7 @@ function eq(actual, expected, label) {
 function ok(cond, label) { if (cond) passed++; else { failed++; console.error(`✗ ${label}`); } }
 
 /* ---- Exporte vorhanden? ---- */
-["sanitizeUrl", "sanitizeHexColor", "migrate", "escapeHtml"].forEach((name) => {
+["sanitizeUrl", "sanitizeHexColor", "migrate", "escapeHtml", "syncDecision"].forEach((name) => {
   ok(typeof api[name] === "function", `Export vorhanden: ${name}`);
 });
 
@@ -158,6 +158,24 @@ eq(clean.schemaVersion, api.SCHEMA_VERSION, "migrate: schemaVersion wird auf akt
 eq(api.migrate(null).modules, [], "migrate(null) → leere Module");
 eq(api.migrate({}).events, [], "migrate({}) → leere Events");
 eq(api.migrate(undefined).modules, [], "migrate(undefined) → leere Module");
+
+/* ---- Sync-Entscheidung (Geräte-Sync, Konfliktauflösung) ----
+   Signatur: syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote)
+   Diese Logik entscheidet, welcher Stand gewinnt — ein Fehler hier bedeutet
+   echten Datenverlust über Geräte hinweg. Darum eng abgedeckt. */
+const SD = api.syncDecision;
+// Server noch leer → lokalen Stand hochladen (egal welche Zeitstempel).
+eq(SD(100, 0, 0, false), "upload", "Sync: leerer Server → upload");
+// Remote älter/gleich → lokal ist aktuell, hochladen.
+eq(SD(200, 100, 50, true), "upload", "Sync: Remote älter → upload");
+eq(SD(200, 200, 50, true), "upload", "Sync: gleich alt → upload (kein Überschreiben)");
+// Remote neuer, lokal seit letztem Sync NICHT geändert → Server gewinnt klar.
+eq(SD(100, 200, 100, true), "apply", "Sync: Remote neuer, kein Lokal-Edit → apply");
+// Remote neuer, lokal seit letztem Sync geändert → echter Konflikt (Rückfrage).
+eq(SD(300, 400, 100, true), "conflict", "Sync: Remote neuer + Lokal-Edit → conflict");
+// Erststart ohne je gesyncten Stand (lastSyncedRemoteTs=0): kein „Konflikt",
+// sondern Server übernehmen — sonst würde jeder Erstabgleich fälschlich fragen.
+eq(SD(300, 400, 0, true), "apply", "Sync: Remote neuer, noch nie gesynct → apply (kein Fehlalarm)");
 
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

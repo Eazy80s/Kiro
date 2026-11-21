@@ -2548,6 +2548,20 @@ function backupBeforeOverwrite() {
   } catch (e) {}
 }
 
+// Reine Entscheidungslogik des Sync-Abgleichs (ohne Netz/DOM), damit sie
+// isoliert testbar ist. Liefert, WAS zu tun ist — pullAndMerge führt es aus.
+//   hasRemote=false                     → "upload"  (Server noch leer)
+//   remoteTs <= localTs                 → "upload"  (lokal ist aktuell/neuer)
+//   remoteTs  > localTs, kein Lokal-Edit→ "apply"   (Server gewinnt, unstrittig)
+//   remoteTs  > localTs, Lokal-Edit     → "conflict"(Rückfrage nötig)
+// "Lokal-Edit seit letztem Sync" = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0.
+function syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote) {
+  if (!hasRemote) return "upload";
+  if (!(remoteTs > localTs)) return "upload";
+  const localChangedSinceSync = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0;
+  return localChangedSinceSync ? "conflict" : "apply";
+}
+
 async function pullAndMerge() {
   if (!sb || !syncUser) return;
   try {
@@ -2555,34 +2569,27 @@ async function pullAndMerge() {
     const { data, error } = await sb.from("app_state").select("data, updated_at").eq("user_id", syncUser.id).maybeSingle();
     if (error) throw error;
     const localTs = state.updatedAt || 0;
-    if (data && data.data) {
-      const remote = data.data;
-      const remoteTs = remote.updatedAt || new Date(data.updated_at).getTime() || 0;
+    const hasRemote = !!(data && data.data);
+    const remote = hasRemote ? data.data : null;
+    const remoteTs = hasRemote ? (remote.updatedAt || new Date(data.updated_at).getTime() || 0) : 0;
 
-      if (remoteTs > localTs) {
-        // Konflikt: Remote ist neuer UND lokal gab es seit dem letzten Sync eigene Änderungen.
-        const localChangedSinceSync = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0;
-        if (localChangedSinceSync) {
-          backupBeforeOverwrite();
-          const ok = confirm(
-            "Konflikt erkannt: Auf einem anderen Gerät wurden neuere Änderungen gespeichert.\n\n" +
-            "• OK: Server-Stand übernehmen (dein lokaler Stand wird als Sicherung behalten).\n" +
-            "• Abbrechen: deinen lokalen Stand behalten und hochladen."
-          );
-          if (ok) { applyRemote(remote); lastSyncedRemoteTs = remoteTs; setSyncStatus("Server-Stand übernommen · lokale Sicherung erstellt."); }
-          else { await uploadState(); lastSyncedRemoteTs = state.updatedAt || Date.now(); setSyncStatus("Lokalen Stand behalten und hochgeladen."); }
-        } else {
-          backupBeforeOverwrite();
-          applyRemote(remote);
-          lastSyncedRemoteTs = remoteTs;
-          setSyncStatus("Aktualisiert vom Server (neuere Daten übernommen).");
-        }
-      } else {
-        await uploadState();
-        lastSyncedRemoteTs = state.updatedAt || Date.now();
-      }
-    } else {
-      // Noch nichts auf dem Server → lokalen Stand hochladen.
+    const decision = syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote);
+
+    if (decision === "conflict") {
+      backupBeforeOverwrite();
+      const ok = confirm(
+        "Konflikt erkannt: Auf einem anderen Gerät wurden neuere Änderungen gespeichert.\n\n" +
+        "• OK: Server-Stand übernehmen (dein lokaler Stand wird als Sicherung behalten).\n" +
+        "• Abbrechen: deinen lokalen Stand behalten und hochladen."
+      );
+      if (ok) { applyRemote(remote); lastSyncedRemoteTs = remoteTs; setSyncStatus("Server-Stand übernommen · lokale Sicherung erstellt."); }
+      else { await uploadState(); lastSyncedRemoteTs = state.updatedAt || Date.now(); setSyncStatus("Lokalen Stand behalten und hochgeladen."); }
+    } else if (decision === "apply") {
+      backupBeforeOverwrite();
+      applyRemote(remote);
+      lastSyncedRemoteTs = remoteTs;
+      setSyncStatus("Aktualisiert vom Server (neuere Daten übernommen).");
+    } else { // "upload"
       await uploadState();
       lastSyncedRemoteTs = state.updatedAt || Date.now();
     }
@@ -2850,7 +2857,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     taskCompletion, moduleProgress, overallProgress, computeGpa,
     isPassingGrade, formatDuration, escapeHtml, sanitizeUrl, sanitizeHexColor,
-    migrate, SCHEMA_VERSION,
+    migrate, SCHEMA_VERSION, syncDecision,
   };
 }
 

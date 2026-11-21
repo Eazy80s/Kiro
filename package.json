@@ -4,9 +4,9 @@
   "description": "Studien-Tracker: Übersicht, Kalender, Module, Pomodoro & Lernzeit — läuft komplett im Browser.",
   "private": true,
   "scripts": {
-    "test": "node tests/logic.test.js",
+    "test": "node tests/logic.test.js && node tests/security.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
-    "test:all": "node tests/logic.test.js && node tests/browser.test.mjs"
+    "test:all": "node tests/logic.test.js && node tests/security.test.mjs && node tests/browser.test.mjs"
   },
   "license": "MIT"
 }

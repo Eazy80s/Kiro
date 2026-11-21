@@ -72,10 +72,13 @@ Ohne Sync liegt alles im **localStorage** des jeweiligen Browsers:
 ## Tests
 
 ```bash
-npm test            # Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …)
+npm test              # Rechenlogik (gespiegelt) + Sicherheit/Migration (echte app.js)
 npm run test:browser  # echter Headless-Chrome-Smoke-Test (überspringt, wenn kein Browser da ist)
-npm run test:all      # beides
+npm run test:all      # alles
 ```
+
+- `tests/logic.test.js` – Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …).
+- `tests/security.test.mjs` – lädt **die echte `app.js`** (per `node:vm` mit DOM-Stubs) und prüft `escapeHtml`, `sanitizeUrl`, `sanitizeHexColor` und `migrate` direkt am Produktionscode (kein Spiegeln → kein Drift).
 
 Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 
@@ -89,7 +92,8 @@ Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 | `manifest.webmanifest`, `sw.js`, `icon*` | PWA (installierbar/offline) |
 | `supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
 | `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
-| `tests/logic.test.js` | Automatisierte Tests |
+| `tests/logic.test.js` | Automatisierte Tests der Rechenlogik |
+| `tests/security.test.mjs` | Sicherheits-/Migrationstests gegen die echte `app.js` |
 
 ## Lizenz
 

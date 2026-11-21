@@ -31,18 +31,18 @@
   <div class="layout">
     <aside class="sidebar">
       <h1 class="brand">🎓 Studien-<br />Tracker</h1>
-      <nav class="tabs">
-        <button class="tab-btn active" data-tab="dashboard">Übersicht</button>
-        <button class="tab-btn" data-tab="calendar">Kalender</button>
-        <button class="tab-btn" data-tab="modules">Module</button>
-        <button class="tab-btn" data-tab="pomodoro">Pomodoro</button>
-        <button class="tab-btn" data-tab="settings">Einstellungen</button>
+      <nav class="tabs" role="tablist" aria-label="Hauptbereiche">
+        <button id="tab-dashboard" class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="dashboard">Übersicht</button>
+        <button id="tab-calendar" class="tab-btn" data-tab="calendar" role="tab" aria-selected="false" aria-controls="calendar">Kalender</button>
+        <button id="tab-modules" class="tab-btn" data-tab="modules" role="tab" aria-selected="false" aria-controls="modules">Module</button>
+        <button id="tab-pomodoro" class="tab-btn" data-tab="pomodoro" role="tab" aria-selected="false" aria-controls="pomodoro">Pomodoro</button>
+        <button id="tab-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="settings">Einstellungen</button>
       </nav>
     </aside>
 
     <main>
     <!-- ÜBERSICHT -->
-    <section id="dashboard" class="tab-panel active">
+    <section id="dashboard" class="tab-panel active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
       <!-- Prüfungs-Countdown (volle Breite) -->
       <div id="countdown-card" class="countdown-card dash-full"></div>
 
@@ -84,7 +84,7 @@
     </section>
 
     <!-- KALENDER -->
-    <section id="calendar" class="tab-panel">
+    <section id="calendar" class="tab-panel" role="tabpanel" aria-labelledby="tab-calendar" tabindex="0">
       <div class="calendar-controls">
         <div class="nav-group">
           <button id="prev-month" class="icon-btn" title="Vorheriger Monat" aria-label="Vorheriger Monat">«</button>
@@ -140,7 +140,7 @@
     </section>
 
     <!-- MODULE -->
-    <section id="modules" class="tab-panel">
+    <section id="modules" class="tab-panel" role="tabpanel" aria-labelledby="tab-modules" tabindex="0">
       <form id="module-form" class="inline-form">
         <input type="text" id="module-name" placeholder="Neuer Modulname (z. B. Lineare Algebra)" required />
         <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
@@ -155,7 +155,7 @@
     </section>
 
     <!-- POMODORO -->
-    <section id="pomodoro" class="tab-panel">
+    <section id="pomodoro" class="tab-panel" role="tabpanel" aria-labelledby="tab-pomodoro" tabindex="0">
       <h2>Fokus-Timer</h2>
       <div class="pomodoro-card">
         <div class="pomo-mode-tabs">
@@ -227,7 +227,7 @@
     </section>
 
     <!-- EINSTELLUNGEN (als Akkordeon) -->
-    <section id="settings" class="tab-panel">
+    <section id="settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
       <details class="settings-group" open>
         <summary>Darstellung</summary>
         <p class="muted">Wähle das Erscheinungsbild der App.</p>
@@ -315,7 +315,7 @@
   <div id="print-view" class="print-view" aria-hidden="true"></div>
 
   <!-- Snackbar für „Rückgängig“ -->
-  <div id="snackbar" class="snackbar" aria-live="polite"></div>
+  <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
 
   <!-- Supabase-Client (für Geräte-Sync). Lädt aus dem Netz; ohne Netz läuft die App lokal weiter. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>

@@ -1,11 +1,19 @@
 /* ============================================================
    Studien-Tracker — Daten im localStorage
-   Datenmodell (v4):
-     module:  { id, name, ects, grade, targetGrade, completed, pinned, collapsed, tasks:[task] }
-     task:    { id, text, done, date, subtasks:[subtask] }
-     subtask: { id, text, done }
-     event:   { id, date, time, title, type, repeat }
+   Datenmodell (v7):
+     module:   { id, name, ects, grade, targetGrade, semester, completed, pinned,
+                 collapsed, gradeComponents:[comp], links:[link], tasks:[task] }
+     comp:     { id, label, grade, weight }        // Teilnote (gewichtet)
+     link:     { id, label, url }                  // url immer http(s) (sanitizeUrl)
+     task:     { id, text, done, pinned, date, subtasks:[subtask] }
+     subtask:  { id, text, done }
+     event:    { id, date, time, title, type, repeat, repeatUntil, color }
+                 // color immer null oder echte Hex-Farbe (sanitizeHexColor)
    Separate Keys: Pomodoro-Zeiten, Lernstatistik (inkl. Ziele & Lernzeit je Modul), Theme.
+
+   Sicherheit: Nutzerdaten werden beim Rendern mit escapeHtml maskiert; die
+   per innerHTML eingesetzten Sonderfälle (Farbe, Link-URL) werden zusätzlich
+   zentral in migrate() gehärtet, damit auch Import/Sync die Zusicherungen erfüllen.
 
    Aufbau dieser Datei (in einem IIFE gekapselt, kein globaler Namensraum):
      1) Persistenz & Migration      2) Fortschritt/Noten-Helfer
@@ -24,6 +32,19 @@ const SCHEMA_VERSION = 7;
 
 let state = loadState();
 
+/* ---------- Eingabe-Härtung (Sicherheit) ----------
+   Diese Helfer stellen sicher, dass potenziell gefährliche Felder (Farbe, URL)
+   unabhängig vom Eingangsweg sauber sind — also auch nach JSON-Import und
+   Geräte-Sync, nicht nur beim Tippen im Editor. */
+
+// Nur echte #rrggbb/#rgb-Hex-Farben zulassen; sonst null (→ Typ-Standardfarbe).
+// Verhindert Ausbruch aus inline-style-Attributen (z. B. aus importierten Daten).
+function sanitizeHexColor(raw) {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s : null;
+}
+
 /* ---------- Persistence & migration ---------- */
 function loadState() {
   let data = { modules: [], events: [] };
@@ -37,10 +58,23 @@ function loadState() {
 }
 
 // Bring older saved records up to the current shape so nothing breaks.
+//
+// Strategie: Die Defaults unten sind idempotent und rein additiv — sie füllen
+// nur fehlende Felder und härten gefährliche Werte (Farbe/URL). Das deckt jeden
+// bisherigen Schemastand (bis v7) ab, ohne pro Version eigene Zweige zu brauchen.
+// WICHTIG: Sobald eine Änderung NICHT mehr additiv ist (Feld umbenennen/entfernen,
+// Werte umrechnen), gehört die Umwandlung in den versionierten Block unten —
+// VOR den Default-Füller —, sonst gehen Daten still verloren.
 function migrate(data) {
   if (!data || typeof data !== "object") data = {};
   if (!Array.isArray(data.modules)) data.modules = [];
   if (!Array.isArray(data.events)) data.events = [];
+
+  // --- Versionierte, nicht-additive Umwandlungen (von alt nach neu) ---
+  const from = Number(data.schemaVersion) || 0;
+  // Beispiel für die Zukunft:
+  //   if (from < 8) { data.modules.forEach((m) => { m.neuerName = m.alterName; delete m.alterName; }); }
+  void from; // aktuell keine nicht-additiven Schritte nötig
   // Events gain an optional time ("HH:MM" or null) and recurrence rule.
   data.events.forEach((e) => {
     if (e.time === undefined) e.time = null;
@@ -48,8 +82,10 @@ function migrate(data) {
     if (e.repeat === undefined) e.repeat = null;
     // optionales Enddatum einer Serie ("YYYY-MM-DD" oder null)
     if (e.repeatUntil === undefined) e.repeatUntil = null;
-    // optionale eigene Farbe (Hex) — überschreibt die Typ-Standardfarbe (Punkt 8)
-    if (e.color === undefined) e.color = null;
+    // optionale eigene Farbe (Hex) — überschreibt die Typ-Standardfarbe (Punkt 8).
+    // Immer härten: nur echte Hex-Farben überleben (schützt vor style-Injection
+    // aus importierten/gesyncten Daten, die später per innerHTML gerendert werden).
+    e.color = sanitizeHexColor(e.color);
   });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
@@ -58,8 +94,10 @@ function migrate(data) {
     if (m.semester === undefined) m.semester = null;       // z. B. "WS 2026/27"
     // Teilnoten (Punkt 4): [{ id, label, grade, weight }]. Endnote = gewichteter Schnitt.
     if (!Array.isArray(m.gradeComponents)) m.gradeComponents = [];
-    // Weblinks zur Hochschul-Plattform: [{ id, label, url }].
+    // Weblinks zur Hochschul-Plattform: [{ id, label, url }]. URLs immer
+    // re-validieren (nur http(s)), damit die Zusicherung auch für Import/Sync gilt.
     if (!Array.isArray(m.links)) m.links = [];
+    m.links.forEach((l) => { if (l) l.url = sanitizeUrl(l.url) || ""; });
     if (typeof m.completed !== "boolean") m.completed = false;
     if (typeof m.pinned !== "boolean") m.pinned = false;
     if (typeof m.collapsed !== "boolean") m.collapsed = false;
@@ -359,17 +397,32 @@ function formatDuration(sec) {
 }
 
 /* ---------- Tab navigation ---------- */
-document.querySelectorAll(".tab-btn").forEach((btn) => {
+const TAB_BTNS = Array.from(document.querySelectorAll(".tab-btn"));
+TAB_BTNS.forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    TAB_BTNS.forEach((b) => {
+      const on = b === btn;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
     document.getElementById(btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "dashboard") renderDashboard();
     if (btn.dataset.tab === "calendar") renderCalendar();
     if (btn.dataset.tab === "modules") renderModules();
     if (btn.dataset.tab === "pomodoro") renderStudyStats();
     if (btn.dataset.tab === "settings") { renderStudyChart(); }
+  });
+  // Pfeiltasten-Navigation innerhalb der Tableiste (übliches ARIA-Tablist-Verhalten).
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const i = TAB_BTNS.indexOf(btn);
+    const next = e.key === "ArrowRight"
+      ? TAB_BTNS[(i + 1) % TAB_BTNS.length]
+      : TAB_BTNS[(i - 1 + TAB_BTNS.length) % TAB_BTNS.length];
+    next.focus();
+    next.click();
   });
 });
 
@@ -695,7 +748,10 @@ function renderDayDetail() {
     const timePart = e.time ? `<span class="d-time">${formatTime(e.time)} Uhr</span> ` : "";
     const repPart = e.repeat ? ` <span class="repeat-badge">↻ ${REPEAT_LABELS[e.repeat] || ""}</span>` : "";
     const delTitle = e.repeat ? "Serie löschen" : "Löschen";
-    const colorStyle = e.color ? ` style="background:${e.color};color:#fff"` : "";
+    // Farbe defensiv härten (Defense-in-Depth): nur echte Hex-Farben landen im
+    // style-Attribut, selbst falls doch mal ein ungeprüfter Wert durchkäme.
+    const safeColor = sanitizeHexColor(e.color);
+    const colorStyle = safeColor ? ` style="background:${safeColor};color:#fff"` : "";
     html += `
       <div class="d-event">
         <span class="d-left"><span class="tag ${e.type}"${colorStyle}>${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
@@ -977,7 +1033,7 @@ document.getElementById("event-form").addEventListener("submit", (e) => {
   const repeat = document.getElementById("event-repeat").value || null;
   const repeatUntil = (repeat ? document.getElementById("event-repeat-until").value : "") || null;
   const colorOn = document.getElementById("event-color-on").checked;
-  const color = colorOn ? document.getElementById("event-color").value : null;
+  const color = colorOn ? sanitizeHexColor(document.getElementById("event-color").value) : null;
   if (!date || !title) return;
   state.events.push({ id: uid(), date, time, title, type, repeat, repeatUntil, color });
   saveState();
@@ -1078,7 +1134,53 @@ function fillSemesterFilter() {
   semesterFilter = sel.value;
 }
 
+// Merkt sich das fokussierte Bedienelement innerhalb der Modulliste, führt den
+// (vollständigen) Neuaufbau aus und stellt den Tastaturfokus danach wieder her.
+// Ohne das springt der Fokus bei jeder Checkbox/Eingabe an den Seitenanfang.
 function renderModules() {
+  const active = document.activeElement;
+  let restore = null;
+  const list = document.getElementById("modules-list");
+  if (active && list && list.contains(active)) {
+    const id = active.id || null;
+    // Stabiler Pfad über die nächstgelegene Daten-ID (Task/Subtask/Link/Teilnote).
+    const holder = active.closest("[data-task-id],[data-lk],[data-gc],[data-module-id]");
+    let scopeAttr = null, scopeVal = null, innerSel = null;
+    if (holder) {
+      for (const a of ["data-task-id", "data-lk", "data-gc", "data-module-id"]) {
+        if (holder.hasAttribute(a)) { scopeAttr = a; scopeVal = holder.getAttribute(a); break; }
+      }
+      // Eindeutiges Merkmal des Feldes innerhalb seines Containers.
+      const cls = (active.className || "").split(/\s+/).find(Boolean);
+      innerSel = active.dataset && Object.keys(active.dataset)[0]
+        ? `[data-${Object.keys(active.dataset)[0].replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}]`
+        : (cls ? "." + cls : active.tagName.toLowerCase());
+    }
+    const selStart = (typeof active.selectionStart === "number") ? active.selectionStart : null;
+    restore = { id, scopeAttr, scopeVal, innerSel, selStart };
+  }
+
+  renderModulesRaw();
+
+  if (restore) {
+    let el = null;
+    if (restore.id) el = document.getElementById(restore.id);
+    if (!el && restore.scopeAttr) {
+      const holder = document.querySelector(`[${restore.scopeAttr}="${CSS && CSS.escape ? CSS.escape(restore.scopeVal) : restore.scopeVal}"]`);
+      if (holder) el = holder.querySelector(restore.innerSel);
+    }
+    if (el) {
+      try {
+        el.focus();
+        if (restore.selStart != null && typeof el.setSelectionRange === "function") {
+          el.setSelectionRange(restore.selStart, restore.selStart);
+        }
+      } catch (e) {}
+    }
+  }
+}
+
+function renderModulesRaw() {
   fillPomoModuleSelect(); // Modul-Auswahl beim Timer aktuell halten
   fillSemesterFilter();   // Semesterfilter aktuell halten
 
@@ -2221,9 +2323,14 @@ function showSnackbar(message, undoFn) {
   if (!bar) { if (undoFn) {/* nichts zu tun */} return; }
   clearTimeout(snackTimer);
   bar.innerHTML = `<span>${escapeHtml(message)}</span>`;
+  // Mit Rückgängig-Aktion länger stehen lassen, damit Tastatur-/Screenreader-
+  // Nutzer die Schaltfläche erreichen, bevor sie verschwindet.
+  let hideAfter = 6000;
   if (undoFn) {
+    hideAfter = 10000;
     const btn = document.createElement("button");
     btn.className = "snack-undo";
+    btn.type = "button";
     btn.textContent = "Rückgängig";
     btn.addEventListener("click", () => {
       clearTimeout(snackTimer);
@@ -2231,9 +2338,11 @@ function showSnackbar(message, undoFn) {
       undoFn();
     });
     bar.appendChild(btn);
+    // Fokus auf die Aktion legen, sobald die Snackbar sichtbar ist.
+    requestAnimationFrame(() => { try { btn.focus(); } catch (e) {} });
   }
   bar.classList.add("show");
-  snackTimer = setTimeout(() => bar.classList.remove("show"), 6000);
+  snackTimer = setTimeout(() => bar.classList.remove("show"), hideAfter);
 }
 
 /* ---------- SVG-Icons (Punkt 1) — einheitlich statt Emojis ---------- */
@@ -2731,5 +2840,18 @@ renderStudyChart();          // Lernzeit-Verlauf (Punkt 2)
 updateNotifyButton();        // Status des Erinnerungs-Buttons (Punkt 8)
 checkReminders();            // heute fällige Prüfungen/Abgaben melden
 initSync();                  // Geräte-Sync initialisieren (Punkt 1)
+
+/* ============================================================
+   TEST-EXPORT (nur unter Node) — kein Build, kein Effekt im Browser.
+   Erlaubt den automatisierten Tests, DIE ECHTE Logik zu importieren,
+   statt sie zu spiegeln (verhindert Drift zwischen Test und App).
+   ============================================================ */
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    taskCompletion, moduleProgress, overallProgress, computeGpa,
+    isPassingGrade, formatDuration, escapeHtml, sanitizeUrl, sanitizeHexColor,
+    migrate, SCHEMA_VERSION,
+  };
+}
 
 })(); // Ende IIFE

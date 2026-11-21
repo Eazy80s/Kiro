@@ -4,13 +4,15 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 
 ## Funktionen
 
-- **📅 Kalender** – Einträge (Prüfung, Abgabe, Vorlesung, Sonstiges) mit optionaler **Uhrzeit** und **Wiederholung** (täglich/wöchentlich/monatlich). Modulaufgaben lassen sich auf Tage planen.
+- **📅 Kalender** – Einträge (Prüfung, Abgabe, Vorlesung, Sonstiges) mit optionaler **Uhrzeit** und **Wiederholung** (täglich/wöchentlich/monatlich). Modulaufgaben lassen sich auf Tage planen. **Monats- und Wochenansicht**, **Suche** (hebt Treffer-Tage hervor) und **ICS-Import** (Termine aus einem Uni-/Fremdkalender einlesen).
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
 - **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul.
 - **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
 - **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich und **je Modul**, mit einstellbaren **Zielen**.
-- **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben.
+- **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben, mit **Schnelleingabe** zum direkten Hinzufügen einer Aufgabe für heute.
+- **📊 Noten je Semester** – Verlauf des ECTS-gewichteten Schnitts pro Semester mit Trend gegenüber dem Vorsemester (im Dashboard, ab zwei benoteten Semestern).
+- **🔗 Modul-Weblinks im Dashboard** – bei einem angehefteten Modul werden eingetragene Weblinks als anklickbare Chips auch unter „Aktuell in Bearbeitung" angezeigt.
 - **⏳ Prüfungs-Countdown** und **Demnächst**-Liste.
 - **🌓 Theme** – hell / dunkel / automatisch.
 - **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben.
@@ -72,10 +74,13 @@ Ohne Sync liegt alles im **localStorage** des jeweiligen Browsers:
 ## Tests
 
 ```bash
-npm test            # Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …)
+npm test              # Rechenlogik (gespiegelt) + Sicherheit/Migration (echte app.js)
 npm run test:browser  # echter Headless-Chrome-Smoke-Test (überspringt, wenn kein Browser da ist)
-npm run test:all      # beides
+npm run test:all      # alles
 ```
+
+- `tests/logic.test.js` – Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …).
+- `tests/security.test.mjs` – lädt **die echte `app.js`** (per `node:vm` mit DOM-Stubs) und prüft `escapeHtml`, `sanitizeUrl`, `sanitizeHexColor` und `migrate` direkt am Produktionscode (kein Spiegeln → kein Drift).
 
 Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 
@@ -89,7 +94,8 @@ Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 | `manifest.webmanifest`, `sw.js`, `icon*` | PWA (installierbar/offline) |
 | `supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
 | `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
-| `tests/logic.test.js` | Automatisierte Tests |
+| `tests/logic.test.js` | Automatisierte Tests der Rechenlogik |
+| `tests/security.test.mjs` | Sicherheits-/Migrationstests gegen die echte `app.js` |
 
 ## Lizenz
 

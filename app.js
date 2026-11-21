@@ -2843,15 +2843,19 @@ document.getElementById("stats-today").addEventListener("click", () => {
   renderStudyStats();
 });
 
-// Modul-Auswahl für den Timer füllen (Punkt 6)
+// Modul-Auswahl für den Timer füllen (Punkt 6).
+// Nur Module „In Bearbeitung" (angeheftet & nicht abgeschlossen) — also genau die,
+// die im Dashboard unter „Aktuell in Bearbeitung" erscheinen.
 function fillPomoModuleSelect() {
   const sel = document.getElementById("pomo-module");
   if (!sel) return;
   const prev = pomoModuleId;
-  sel.innerHTML = `<option value="">Ohne Modulzuordnung</option>` +
-    state.modules.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
-  // keep selection if the module still exists
-  sel.value = state.modules.some((m) => m.id === prev) ? prev : "";
+  const active = state.modules.filter((m) => m.pinned && !m.completed);
+  const placeholder = active.length ? "Ohne Modulzuordnung" : "Kein Modul „In Bearbeitung“";
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    active.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+  // Auswahl behalten, solange das Modul weiterhin „In Bearbeitung" ist.
+  sel.value = active.some((m) => m.id === prev) ? prev : "";
   pomoModuleId = sel.value;
   fillPomoTaskSelect();
 }

@@ -322,6 +322,9 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 
 .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .calendar-weekdays { margin-bottom: 6px; }
+/* `hidden` muss das feste `display: grid` der Kalender-Container überstimmen,
+   sonst werden Monats- und Wochenansicht gleichzeitig angezeigt. */
+.calendar-grid[hidden], .calendar-week[hidden], .calendar-weekdays[hidden] { display: none; }
 .calendar-weekdays span { text-align: center; font-size: 0.76rem; color: var(--muted); font-weight: 600; }
 
 .cal-cell {

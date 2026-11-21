@@ -70,6 +70,9 @@ check(dom.includes('id="calendar-search"'), "Kalendersuche vorhanden");
 check(dom.includes('id="view-week"') && dom.includes('id="view-month"'), "Monats-/Wochen-Umschalter vorhanden");
 check(dom.includes('id="ics-import-file"'), "ICS-Import vorhanden");
 check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
+// Lernplan: Typ (Vorlesung/Aufgabe) + Link erscheinen nur nach Laden der Beispieldaten,
+// daher hier nur grob prüfen, dass das Checklisten-Gerüst unverändert da ist.
+check(dom.includes('data-tab="modules"'), "Modul-Tab vorhanden");
 
 console.log(`\nBrowser-Smoke-Test: ${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

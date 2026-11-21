@@ -154,6 +154,23 @@ eq(clean.modules[0].links[1].url, "https://ilias.uni-x.de/goto.php?id=42", "migr
 eq(clean.modules[0].links[2].url, "https://moodle.hs.de/kurs", "migrate: Link ohne Schema wird zu https");
 eq(clean.schemaVersion, api.SCHEMA_VERSION, "migrate: schemaVersion wird auf aktuelle Version gesetzt");
 
+/* ---- migrate: Lernplan-Felder an Aufgaben (Typ + Link) ---- */
+{
+  const d = api.migrate({
+    modules: [{ id: "m", name: "M", ects: 5, tasks: [
+      { id: "t1", text: "Alt-Aufgabe ohne Typ" },
+      { id: "t2", text: "Vorlesung", kind: "lecture", url: "vhb.org/kurs" },
+      { id: "t3", text: "Böser Link", kind: "quatsch", url: "javascript:alert(1)" },
+    ] }],
+  });
+  const tasks = d.modules[0].tasks;
+  eq(tasks[0].kind, "task", "migrate: Aufgabe ohne Typ → 'task'");
+  eq(tasks[0].url, "", "migrate: fehlender Link → leer");
+  eq([tasks[1].kind, tasks[1].url], ["lecture", "https://vhb.org/kurs"], "migrate: Vorlesung + Link gehärtet (https ergänzt)");
+  eq(tasks[2].kind, "task", "migrate: unbekannter Typ fällt auf 'task' zurück");
+  eq(tasks[2].url, "", "migrate: javascript:-Link an Aufgabe wird verworfen");
+}
+
 /* ---- migrate ist defensiv bei Müll-Eingaben ---- */
 eq(api.migrate(null).modules, [], "migrate(null) → leere Module");
 eq(api.migrate({}).events, [], "migrate({}) → leere Events");

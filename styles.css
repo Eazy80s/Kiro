@@ -277,6 +277,28 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .task-date { width: 140px; flex: 0 0 auto; padding: 4px 8px; font-size: 0.8rem; }
 .task-date:not([value=""]) { border-color: var(--accent); }
 
+/* Lernplan: Typ-Badge (Vorlesung) + Link-Chip + Typ/Link-Editor pro Aufgabe */
+.kind-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.66rem; font-weight: 600; padding: 1px 7px 1px 5px;
+  border-radius: 999px; margin-right: 6px; vertical-align: middle;
+}
+.kind-badge .ic { width: 0.85em; height: 0.85em; }
+.kind-badge.lecture { background: #dbeafe; color: #1d4ed8; }
+[data-theme="dark"] .kind-badge.lecture { background: rgba(37,99,235,0.25); color: #93c5fd; }
+.task-block.lecture { border-left: 3px solid #3b82f6; padding-left: 7px; }
+.task-link { flex: 0 0 auto; font-size: 0.72rem !important; }
+.task-opts-btn { flex: 0 0 auto; }
+.task-opts {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin: 6px 0 2px; padding: 8px 10px;
+  background: var(--surface-2); border-radius: 8px;
+}
+.task-opts .task-opt { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+.task-opts .task-opt-url { flex: 1 1 220px; }
+.task-opts .task-opt-url input { flex: 1; min-width: 0; padding: 5px 9px; font-size: 0.82rem; }
+.task-opts select { padding: 5px 8px; font-size: 0.82rem; }
+
 /* Upcoming */
 .upcoming-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .upcoming-list li {

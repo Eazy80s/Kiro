@@ -7,6 +7,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **📅 Kalender** – Einträge (Prüfung, Abgabe, Vorlesung, Sonstiges) mit optionaler **Uhrzeit** und **Wiederholung** (täglich/wöchentlich/monatlich). Modulaufgaben lassen sich auf Tage planen. **Monats- und Wochenansicht**, **Suche** (hebt Treffer-Tage hervor) und **ICS-Import** (Termine aus einem Uni-/Fremdkalender einlesen).
 - **📚 Module** – pro Kurs ein Modul, gruppiert in **In Bearbeitung / Demnächst / Abgeschlossen**, ein-/ausklappbar, mit **Suche**.
 - **✅ Checklisten & Teilaufgaben** – mit Fortschrittsanrechnung; Aufgaben können ein Datum bekommen.
+- **🎥 Lernplan (Fernstudium)** – jede Checklisten-Einheit kann als **Vorlesung** oder **Aufgabe** markiert werden und einen eigenen **Link** zur Plattform/Aufzeichnung tragen (anklickbar, sichere http(s)-URL). So wird die Checkliste zum flexiblen, selbst terminierten Lernplan — die Einträge erscheinen mit Typ und Link auch in „Fokus heute" und im Kalender.
 - **📊 Fortschritt** – Gesamtfortschritt (aus abgeschlossenen Modulen, ECTS-gewichtet) und Fortschritt je Modul.
 - **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
 - **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich und **je Modul**, mit einstellbaren **Zielen**.

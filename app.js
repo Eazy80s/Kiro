@@ -5,7 +5,8 @@
                  collapsed, gradeComponents:[comp], links:[link], tasks:[task] }
      comp:     { id, label, grade, weight }        // Teilnote (gewichtet)
      link:     { id, label, url }                  // url immer http(s) (sanitizeUrl)
-     task:     { id, text, done, pinned, date, subtasks:[subtask] }
+     task:     { id, text, done, pinned, date, kind, url, subtasks:[subtask] }
+                 // kind: "task" | "lecture" (Vorlesung); url: http(s) oder ""
      subtask:  { id, text, done }
      event:    { id, date, time, title, type, repeat, repeatUntil, color }
                  // color immer null oder echte Hex-Farbe (sanitizeHexColor)
@@ -28,7 +29,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 let state = loadState();
 
@@ -107,6 +108,12 @@ function migrate(data) {
       if (typeof t.pinned !== "boolean") t.pinned = false;
       // Scheduled date (YYYY-MM-DD) or null. Drives Calendar + Today's Focus.
       if (t.date === undefined) t.date = null;
+      // Lernplan (Fernstudium): Typ der Einheit — "task" (Aufgabe) oder
+      // "lecture" (Vorlesung/Lerneinheit). Alt-Daten ohne Typ sind Aufgaben.
+      t.kind = (t.kind === "lecture") ? "lecture" : "task";
+      // Optionaler eigener Link (z. B. zur Plattform-Aufzeichnung). Immer
+      // härten: nur http(s) (schützt Import/Sync), sonst leer.
+      t.url = sanitizeUrl(t.url) || "";
       if (!Array.isArray(t.subtasks)) t.subtasks = [];
       t.subtasks.forEach((s) => { if (typeof s.done !== "boolean") s.done = false; });
     });
@@ -746,10 +753,17 @@ function renderPinnedTasks() {
       const subDone = task.subtasks.filter((s) => s.done).length;
       const subLabel = task.subtasks.length ? ` <span class="focus-sub-count">(${subDone}/${task.subtasks.length})</span>` : "";
 
+      const kindBadge = task.kind === "lecture"
+        ? `<span class="kind-badge lecture" title="Vorlesung / Lerneinheit">${icon("play")} Vorlesung</span>`
+        : "";
+      const linkChip = task.url
+        ? `<a class="task-link mod-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(task.url)}">${icon("link")} Öffnen</a>`
+        : "";
       li.innerHTML = `
         <div class="focus-main">
           <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
-          <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}${subLabel}</span>
+          <span class="focus-text ${task.done ? "done" : ""}">${kindBadge}${escapeHtml(task.text)}${subLabel}</span>
+          ${linkChip}
         </div>
         <ul class="focus-subtasks"></ul>`;
 
@@ -1041,12 +1055,17 @@ function renderDayDetail() {
 
   // Scheduled module tasks (planned work)
   dayTasks.forEach(({ module, task }) => {
+    const isLecture = task.kind === "lecture";
+    const tagLabel = isLecture ? "Vorlesung" : "Aufgabe";
+    const linkChip = task.url
+      ? ` <a class="task-link mod-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(task.url)}">${icon("link")} Öffnen</a>`
+      : "";
     html += `
       <div class="d-event d-task">
         <span class="d-left">
           <input type="checkbox" data-task-done="${task.id}" ${task.done ? "checked" : ""} />
-          <span class="tag task">Aufgabe</span>
-          <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>
+          <span class="tag ${isLecture ? "lecture" : "task"}">${tagLabel}</span>
+          <span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>${linkChip}
         </span>
         <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen" aria-label="Von diesem Tag entfernen">${icon("close")}</button>
       </div>`;
@@ -1346,7 +1365,7 @@ if (quickTaskForm) {
     const text = (textEl.value || "").trim();
     const mod = state.modules.find((m) => m.id === modSel.value);
     if (!text || !mod) { if (!state.modules.length) showSnackbar("Lege zuerst ein Modul an, dann kannst du Aufgaben hinzufügen."); return; }
-    mod.tasks.push({ id: uid(), text, done: false, pinned: false, date: todayIso(), subtasks: [] });
+    mod.tasks.push({ id: uid(), text, done: false, pinned: false, date: todayIso(), kind: "task", url: "", subtasks: [] });
     saveState();
     textEl.value = "";
     renderDashboard();
@@ -1753,14 +1772,37 @@ function renderModuleCard(m) {
     const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
     const ds = (t.date && !t.done) ? dueStatus(t.date) : null;
     const dueBadge = ds ? `<span class="due-badge ${ds.cls}">${ds.label}</span>` : "";
+    const isLecture = t.kind === "lecture";
+    if (isLecture) li.classList.add("lecture");
+    // Typ-Badge (Vorlesung/Aufgabe) vor dem Text.
+    const kindBadge = isLecture
+      ? `<span class="kind-badge lecture" title="Vorlesung / Lerneinheit">${icon("play")} Vorlesung</span>`
+      : "";
+    // Anklickbarer Link-Chip, falls ein Link hinterlegt ist (öffnet die Plattform).
+    const linkChip = t.url
+      ? `<a class="task-link mod-link" href="${escapeHtml(t.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t.url)}">${icon("link")} Öffnen</a>`
+      : "";
 
     li.innerHTML = `
       <div class="task-row">
         <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
-        <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+        <label for="${cbId}" class="${t.done ? "done" : ""}">${kindBadge}${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
         ${dueBadge}
-        <input type="date" class="task-date" data-date value="${t.date || ""}" title="Aufgabe terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum der Aufgabe ${escapeHtml(t.text)}" />
-        <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="Aufgabe ${escapeHtml(t.text)} löschen">${icon("close")}</button>
+        ${linkChip}
+        <input type="date" class="task-date" data-date value="${t.date || ""}" title="Terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum von ${escapeHtml(t.text)}" />
+        <button class="icon-btn task-opts-btn" data-task-opts title="Typ & Link bearbeiten" aria-label="Typ und Link von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
+        <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="${escapeHtml(t.text)} löschen">${icon("close")}</button>
+      </div>
+      <div class="task-opts" hidden>
+        <label class="task-opt">Typ:
+          <select data-task-kind aria-label="Typ von ${escapeHtml(t.text)}">
+            <option value="task"${!isLecture ? " selected" : ""}>Aufgabe</option>
+            <option value="lecture"${isLecture ? " selected" : ""}>Vorlesung</option>
+          </select>
+        </label>
+        <label class="task-opt task-opt-url">Link:
+          <input type="url" data-task-url placeholder="https://… (Plattform/Aufzeichnung)" value="${escapeHtml(t.url || "")}" aria-label="Link von ${escapeHtml(t.text)}" />
+        </label>
       </div>
       <ul class="subtask-list"></ul>
       <form class="add-subtask-form"><input type="text" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
@@ -1822,6 +1864,27 @@ function renderModuleCard(m) {
       });
     });
 
+    // Typ & Link ein-/ausblenden (kleiner Editor pro Aufgabe).
+    const optsBox = li.querySelector(".task-opts");
+    li.querySelector("[data-task-opts]").addEventListener("click", () => {
+      optsBox.hidden = !optsBox.hidden;
+      if (!optsBox.hidden) { const u = optsBox.querySelector("[data-task-url]"); if (u) u.focus(); }
+    });
+    // Typ wechseln (Aufgabe ⇄ Vorlesung).
+    li.querySelector("[data-task-kind]").addEventListener("change", (ev) => {
+      t.kind = ev.target.value === "lecture" ? "lecture" : "task";
+      saveState(); renderModules();
+    });
+    // Link setzen/entfernen — nur sichere http(s)-URLs (wie bei den Modul-Links).
+    li.querySelector("[data-task-url]").addEventListener("change", (ev) => {
+      const clean = sanitizeUrl(ev.target.value);
+      if (ev.target.value.trim() && !clean) {
+        showSnackbar("Ungültige Adresse — bitte eine gültige Web-URL eingeben.");
+      }
+      t.url = clean || "";
+      saveState(); renderModules();
+    });
+
     // Drag & Drop der Aufgaben innerhalb des Moduls (Punkt 6)
     li.addEventListener("dragstart", (e) => {
       e.stopPropagation(); dragTaskId = t.id; li.classList.add("dragging");
@@ -1857,7 +1920,7 @@ function renderModuleCard(m) {
     const input = ev.target.querySelector("input");
     const text = input.value.trim();
     if (!text) return;
-    m.tasks.push({ id: uid(), text, done: false, date: null, subtasks: [] });
+    m.tasks.push({ id: uid(), text, done: false, pinned: false, date: null, kind: "task", url: "", subtasks: [] });
     saveState(); renderModules();
   });
 
@@ -2753,6 +2816,7 @@ const ICONS = {
   cap: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
   link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+  play: '<path d="M8 5v14l11-7z"/>',
 };
 function icon(name, cls) {
   const p = ICONS[name] || "";
@@ -2773,8 +2837,9 @@ function loadSampleData() {
   state = migrate({
     modules: [
       { id: uid(), name: "Lineare Algebra", ects: 9, grade: null, targetGrade: 2.0, semester: "WS 2026/27", pinned: true, tasks: [
-        { id: uid(), text: "Vorlesung 1 nacharbeiten", done: true, subtasks: [] },
-        { id: uid(), text: "Übungsblatt 2", done: false, date: inDays(2), subtasks: [
+        { id: uid(), text: "Vorlesung 1 ansehen", done: true, kind: "lecture", url: "https://www.example.com/vorlesung-1", subtasks: [] },
+        { id: uid(), text: "Vorlesung 2 ansehen", done: false, date: inDays(1), kind: "lecture", url: "https://www.example.com/vorlesung-2", subtasks: [] },
+        { id: uid(), text: "Übungsblatt 2", done: false, date: inDays(2), kind: "task", subtasks: [
           { id: uid(), text: "Aufgabe 1", done: false }, { id: uid(), text: "Aufgabe 2", done: false } ] },
       ] },
       { id: uid(), name: "Programmierung", ects: 6, grade: 1.7, targetGrade: 2.0, semester: "WS 2026/27", completed: true, tasks: [] },

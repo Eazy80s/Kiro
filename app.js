@@ -367,7 +367,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "calendar") renderCalendar();
     if (btn.dataset.tab === "modules") renderModules();
     if (btn.dataset.tab === "pomodoro") renderStudyStats();
-    if (btn.dataset.tab === "settings") { renderStudyChart(); renderBackupReminder(); renderForecast(); }
+    if (btn.dataset.tab === "settings") { renderStudyChart(); }
   });
 });
 
@@ -411,16 +411,16 @@ function renderDashboard() {
   const { pct, weighted } = overallProgress();
   document.getElementById("overall-percent").textContent = pct + "%";
   document.getElementById("overall-bar").style.width = pct + "%";
-  document.getElementById("overall-mode").textContent = weighted ? "(ECTS-gewichtet)" : "";
+  document.getElementById("overall-mode").textContent = "";
 
   const completedCount = state.modules.filter((m) => m.completed).length;
   document.getElementById("overall-summary").textContent = state.modules.length
-    ? `${completedCount} von ${state.modules.length} Modul(en) abgeschlossen. (Fortschritt zählt nur abgeschlossene Module.)`
+    ? `${completedCount} von ${state.modules.length} Modul(en) abgeschlossen.`
     : "Noch keine Module — füge im Tab „Module“ eins hinzu, um zu starten.";
 
   const gpa = computeGpa();
   document.getElementById("gpa-summary").textContent = gpa
-    ? `Notendurchschnitt: ${gpa.value.toFixed(2).replace(".", ",")} (Skala 1,0–5,0${gpa.weighted ? ", ECTS-gewichtet" : ""}; aus ${gpa.count} benoteten Modul${gpa.count > 1 ? "en" : ""}).`
+    ? `Notendurchschnitt: ${gpa.value.toFixed(2).replace(".", ",")}`
     : "Noch keine Noten erfasst.";
 
   renderPinnedModules();
@@ -1000,7 +1000,7 @@ document.getElementById("module-form").addEventListener("submit", (e) => {
   const ects = parseFloat(document.getElementById("module-ects").value) || 0;
   const semester = document.getElementById("module-semester").value.trim() || null;
   if (!name) return;
-  state.modules.push({ id: uid(), name, ects, grade: null, targetGrade: null, semester, completed: false, pinned: false, collapsed: false, tasks: [] });
+  state.modules.push({ id: uid(), name, ects, grade: null, targetGrade: null, semester, gradeComponents: [], completed: false, pinned: false, collapsed: false, tasks: [] });
   saveState();
   e.target.reset();
   renderModules();
@@ -1008,6 +1008,46 @@ document.getElementById("module-form").addEventListener("submit", (e) => {
 
 let moduleFilter = "";    // Suchbegriff (Punkt 7)
 let semesterFilter = "";  // Semesterfilter (Punkt 6)
+
+/* ---------- Semester: Optionen & Sortierung ----------
+   Format "SS26" / "WS26". Reihenfolge: Jahr aufsteigend, innerhalb eines
+   Jahres SS vor WS. Ohne Semester → ganz ans Ende. */
+// Liste auswählbarer Semester (einige Jahre ab aktuellem Studienjahr).
+function semesterOptions() {
+  const now = new Date();
+  // Studienjahr beginnt grob im Herbst; wir starten ein Jahr vor jetzt für Rückwärts-Fälle.
+  const startYear = (now.getFullYear() % 100) - 1;
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const yy = startYear + i;
+    out.push("SS" + String(yy).padStart(2, "0"));
+    out.push("WS" + String(yy).padStart(2, "0"));
+  }
+  return out;
+}
+// Sortierschlüssel: kleiner = früher. Ungültige/leere → Infinity (ans Ende).
+function semesterSortKey(sem) {
+  if (!sem) return Infinity;
+  const m = /^(SS|WS)\s*'?(\d{2})$/i.exec(String(sem).trim());
+  if (!m) return Infinity;
+  const term = m[1].toUpperCase() === "SS" ? 0 : 1; // SS vor WS
+  const year = parseInt(m[2], 10);
+  return year * 2 + term;
+}
+// Baut die <option>s für ein Semester-Select; `current` wird vorausgewählt
+// (auch wenn es nicht in der Standardliste ist).
+function semesterOptionsHtml(current) {
+  const opts = semesterOptions();
+  if (current && !opts.includes(current)) opts.unshift(current);
+  return [`<option value="">— kein Semester —</option>`]
+    .concat(opts.map((s) => `<option value="${escapeHtml(s)}"${s === current ? " selected" : ""}>${escapeHtml(s)}</option>`))
+    .join("");
+}
+// Füllt das Dropdown im „Modul hinzufügen“-Formular.
+function fillCreateSemester() {
+  const sel = document.getElementById("module-semester");
+  if (sel) sel.innerHTML = semesterOptionsHtml("");
+}
 
 // Trifft ein Modul auf den Suchbegriff zu? Prüft Modulname, Aufgaben, Teilaufgaben.
 function moduleMatchesFilter(m, q) {
@@ -1061,9 +1101,11 @@ function renderModules() {
   }
 
   // Drei Bereiche: In Bearbeitung (angeheftet), Demnächst (Rest), Abgeschlossen.
-  const ongoing = visible.filter((m) => m.pinned && !m.completed);
-  const upcoming = visible.filter((m) => !m.pinned && !m.completed);
-  const finished = visible.filter((m) => m.completed);
+  // Nach Semester sortieren (Jahr ↑, SS vor WS, ohne Semester ans Ende).
+  const bySemester = (a, b) => semesterSortKey(a.semester) - semesterSortKey(b.semester);
+  const ongoing = visible.filter((m) => m.pinned && !m.completed).sort(bySemester);
+  const upcoming = visible.filter((m) => !m.pinned && !m.completed).sort(bySemester);
+  const finished = visible.filter((m) => m.completed).sort(bySemester);
 
   const sections = [
     { title: "In Bearbeitung", hint: "Angeheftete Module, an denen du arbeitest", items: ongoing },
@@ -1121,6 +1163,7 @@ function renderGradeComponents(wrap, m) {
     <button class="link-btn" data-gc-add>${icon("plus")} Teilnote hinzufügen</button>`;
 
   wrap.querySelector("[data-gc-add]").addEventListener("click", () => {
+    if (!Array.isArray(m.gradeComponents)) m.gradeComponents = [];
     m.gradeComponents.push({ id: uid(), label: "", grade: null, weight: 0 });
     syncComponentGrade(m); saveState(); renderModules();
   });
@@ -1165,6 +1208,7 @@ function renderModuleCard(m) {
       </h3>
       <div class="module-actions">
         <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
+        <button class="pin-btn" data-edit-module title="Modulname bearbeiten" aria-label="Modulname bearbeiten">${icon("edit")}</button>
         <button class="pin-btn ${m.pinned ? "pinned" : ""}" data-pin-module title="Als „In Bearbeitung“ markieren (anheften)" aria-label="Modul anheften/lösen" aria-pressed="${m.pinned}">${icon("pin")}</button>
         <button class="del-btn" data-del-module title="Modul löschen" aria-label="Modul löschen">${icon("trash")}</button>
       </div>
@@ -1176,7 +1220,7 @@ function renderModuleCard(m) {
         <label>Note: <input type="number" class="grade-input" data-grade step="0.1" min="1" max="5" placeholder="—" value="${m.grade ?? ""}" ${hasComponents ? "disabled title='Wird aus Teilnoten berechnet'" : ""}/></label>
         <label>Wunschnote: <input type="number" class="grade-input" data-target step="0.1" min="1" max="5" placeholder="—" value="${m.targetGrade ?? ""}"/></label>
         <label>ECTS: <input type="number" class="grade-input" data-ects step="0.5" min="0" placeholder="0" value="${m.ects || ""}"/></label>
-        <label>Semester: <input type="text" class="semester-edit" data-semester placeholder="—" value="${m.semester ? escapeHtml(m.semester) : ""}"/></label>
+        <label>Semester: <select class="semester-edit" data-semester>${semesterOptionsHtml(m.semester || "")}</select></label>
       </div>
       ${gradeHint(m)}
       <div class="grade-components"></div>
@@ -1334,6 +1378,13 @@ function renderModuleCard(m) {
   card.querySelector("[data-pin-module]").addEventListener("click", () => {
     m.pinned = !m.pinned; saveState(); renderModules();
   });
+  card.querySelector("[data-edit-module]").addEventListener("click", () => {
+    const neu = prompt("Modulname bearbeiten:", m.name);
+    if (neu === null) return;              // abgebrochen
+    const name = neu.trim();
+    if (!name) return;                     // leer nicht übernehmen
+    m.name = name; saveState(); renderModules(); renderDashboard();
+  });
   card.querySelector("[data-del-module]").addEventListener("click", () => {
     const idx = state.modules.indexOf(m);
     state.modules = state.modules.filter((x) => x.id !== m.id);
@@ -1419,7 +1470,6 @@ document.getElementById("export-btn").addEventListener("click", () => {
   a.remove();
   URL.revokeObjectURL(url);
   setStatus("Daten als .json-Datei exportiert.");
-  if (typeof markBackupNow === "function") markBackupNow();
 });
 
 document.getElementById("import-file").addEventListener("change", (e) => {
@@ -1898,34 +1948,9 @@ function renderStudyChart() {
        <p class="muted" style="text-align:center;margin-top:6px;">Gesamt: ${formatDuration(total)} in 14 Tagen</p>`;
 }
 
-/* ----- Notenschnitt-Prognose (Punkt 7) ----- */
-function renderForecast(target) {
-  const el = document.getElementById("forecast-result");
-  if (!el) return;
-  const f = gradeForecast(target == null ? 2.5 : target);
-  if (f.done) { el.textContent = "Alle ECTS-tragenden Module sind benotet — keine Prognose nötig."; return; }
-  if (f.remainingEcts === 0) { el.textContent = "Keine unbenoteten Module mit ECTS vorhanden."; return; }
-  if (f.impossible) { el.textContent = `Nicht erreichbar: Selbst mit 1,0 in den restlichen ${f.remainingEcts} ECTS ist dieses Ziel rechnerisch nicht mehr möglich.`; return; }
-  let msg;
-  if (f.tooEasy) msg = `Bereits sicher: Das Ziel ist selbst mit 5,0 in den restlichen ${f.remainingEcts} ECTS erreicht.`;
-  else msg = `Du brauchst in den verbleibenden ${f.remainingEcts} ECTS im Schnitt ${commaNum(f.needed)} (oder besser).`;
-
-  // Zusätzlich: möglicher Endschnitt-Bereich (Punkt 5)
-  const r = gradeRange();
-  if (r && r.openEcts > 0) {
-    msg += ` · Möglicher Endschnitt: ${commaNum(r.best)}–${commaNum(r.worst)}`;
-  }
-  el.textContent = msg;
-}
-const forecastForm = document.getElementById("forecast-form");
-if (forecastForm) {
-  forecastForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const raw = document.getElementById("forecast-target").value.replace(",", ".");
-    const target = parseFloat(raw);
-    renderForecast(isNaN(target) ? 2.5 : target);
-  });
-}
+/* Hinweis: gradeForecast() und gradeRange() bleiben erhalten — sie werden
+   für die Druck-/Papierversion (buildPrintView) weiterhin verwendet. Die
+   frühere Prognose-UI in den Einstellungen wurde entfernt. */
 
 /* ----- ICS-Export (Punkt 3) ----- */
 const icsBtn = document.getElementById("ics-btn");
@@ -2039,34 +2064,6 @@ if (printBtn) {
   printBtn.addEventListener("click", () => { buildPrintView(); window.print(); });
 }
 
-/* ----- Backup-Erinnerung / "zuletzt gesichert" (Punkt 4) ----- */
-const LAST_BACKUP_KEY = "study-tracker-last-backup";
-function markBackupNow() { try { localStorage.setItem(LAST_BACKUP_KEY, todayIso()); } catch (e) {} renderBackupReminder(); }
-function renderBackupReminder() {
-  const el = document.getElementById("backup-reminder");
-  if (!el) return;
-  // Bei aktivem Sync ist ein manuelles Backup weniger wichtig.
-  if (typeof syncUser !== "undefined" && syncUser) {
-    el.hidden = false; el.className = "backup-reminder ok";
-    el.textContent = "✓ Geräte-Sync aktiv — zusätzliche Backups sind optional.";
-    return;
-  }
-  let last = null;
-  try { last = localStorage.getItem(LAST_BACKUP_KEY); } catch (e) {}
-  if (!last) {
-    el.hidden = false; el.className = "backup-reminder warn";
-    el.textContent = "⚠️ Noch kein Backup erstellt. Exportiere deine Daten zur Sicherheit.";
-    return;
-  }
-  const age = daysBetween(last, todayIso());
-  if (age >= 7) {
-    el.hidden = false; el.className = "backup-reminder warn";
-    el.textContent = `⚠️ Letztes Backup vor ${age} Tagen (${formatDate(last)}). Zeit für ein neues.`;
-  } else {
-    el.hidden = false; el.className = "backup-reminder ok";
-    el.textContent = `✓ Zuletzt gesichert: ${formatDate(last)}.`;
-  }
-}
 
 /* ============================================================
    ERINNERUNGEN / BENACHRICHTIGUNGEN (Punkt 8)
@@ -2185,6 +2182,7 @@ const ICONS = {
   bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   print: '<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/>',
   cap: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
 };
 function icon(name, cls) {
   const p = ICONS[name] || "";
@@ -2407,7 +2405,6 @@ async function pullAndMerge() {
       await uploadState();
       lastSyncedRemoteTs = state.updatedAt || Date.now();
     }
-    renderBackupReminder();
   } catch (e) {
     setSyncStatus("Sync-Fehler: " + (e.message || e));
   }
@@ -2652,14 +2649,13 @@ setTheme(loadTheme());       // Theme anwenden (Punkt 9)
 initCalendarState();
 fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
 fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
+fillCreateSemester();        // Semester-Dropdown im „Modul hinzufügen“-Formular
 renderDashboard();
 renderModules();             // damit Suche/Picker initial stimmen
 pomoFillSettings();
 pomoRender();
 renderStudyStats();
 renderStudyChart();          // Lernzeit-Verlauf (Punkt 2)
-renderForecast();            // Notenschnitt-Prognose (Punkt 7)
-renderBackupReminder();      // Backup-Hinweis (Punkt 4)
 updateNotifyButton();        // Status des Erinnerungs-Buttons (Punkt 8)
 checkReminders();            // heute fällige Prüfungen/Abgaben melden
 initSync();                  // Geräte-Sync initialisieren (Punkt 1)

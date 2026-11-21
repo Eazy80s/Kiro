@@ -232,6 +232,22 @@ eq(eventOccursOn({ date: "2026-11-02", repeat: "biweekly", repeatUntil: "2026-11
   eq([isoOf(base), isoOf(ru), delta], ["2026-11-04", "2026-12-16", 2], "Serie: Start + Enddatum um Delta verschoben");
 }
 
+/* ---- Semester-Sortierung (SS vor WS, Jahr aufsteigend, leer ans Ende) ---- */
+function semesterSortKey(sem) {
+  if (!sem) return Infinity;
+  const m = /^(SS|WS)\s*'?(\d{2})$/i.exec(String(sem).trim());
+  if (!m) return Infinity;
+  const term = m[1].toUpperCase() === "SS" ? 0 : 1;
+  return parseInt(m[2], 10) * 2 + term;
+}
+{
+  const input = ["WS26", "SS27", "SS26", "WS27", null, "WS28", "SS28"];
+  const sorted = input.slice().sort((a, b) => semesterSortKey(a) - semesterSortKey(b));
+  eq(sorted, ["SS26", "WS26", "SS27", "WS27", "SS28", "WS28", null], "Semester-Reihenfolge SS vor WS, Jahr ↑, leer zuletzt");
+  eq(semesterSortKey("SS26") < semesterSortKey("WS26"), true, "SS26 vor WS26");
+  eq(semesterSortKey("WS26") < semesterSortKey("SS27"), true, "WS26 vor SS27");
+}
+
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

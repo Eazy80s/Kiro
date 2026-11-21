@@ -815,3 +815,30 @@ body.dragging-active { user-select: none; -webkit-user-select: none; }
   .cal-cell .day-num { width: 100%; font-size: 0.72rem; }
   .cal-more { font-size: 0.6rem; width: 100%; }
 }
+
+/* ============================================================
+   Modul-Links (Hochschul-Plattform)
+   ============================================================ */
+/* anklickbare Link-Chips in der Modulkarte */
+.mod-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.mod-links:empty { display: none; margin: 0; }
+.mod-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.78rem; text-decoration: none;
+  color: var(--accent); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 10px 3px 8px; max-width: 100%;
+}
+.mod-link:hover { border-color: var(--accent); }
+.mod-link .ic { width: 0.9em; height: 0.9em; flex: 0 0 auto; }
+.mod-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Eingeklapptes Modul: Links kompakt unter der Zeile */
+.module-card.collapsed .mod-links { margin: 6px 0 0; }
+
+/* Link-Editor im Bearbeiten-Bereich */
+.link-editor { margin: 8px 0 4px; }
+.lk-head { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.lk-row { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+.lk-label { flex: 0 0 34%; min-width: 110px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }
+.lk-url { flex: 1; min-width: 150px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 0.85rem; }

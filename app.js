@@ -20,7 +20,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 let state = loadState();
 
@@ -58,6 +58,8 @@ function migrate(data) {
     if (m.semester === undefined) m.semester = null;       // z. B. "WS 2026/27"
     // Teilnoten (Punkt 4): [{ id, label, grade, weight }]. Endnote = gewichteter Schnitt.
     if (!Array.isArray(m.gradeComponents)) m.gradeComponents = [];
+    // Weblinks zur Hochschul-Plattform: [{ id, label, url }].
+    if (!Array.isArray(m.links)) m.links = [];
     if (typeof m.completed !== "boolean") m.completed = false;
     if (typeof m.pinned !== "boolean") m.pinned = false;
     if (typeof m.collapsed !== "boolean") m.collapsed = false;
@@ -1000,7 +1002,7 @@ document.getElementById("module-form").addEventListener("submit", (e) => {
   const ects = parseFloat(document.getElementById("module-ects").value) || 0;
   const semester = document.getElementById("module-semester").value.trim() || null;
   if (!name) return;
-  state.modules.push({ id: uid(), name, ects, grade: null, targetGrade: null, semester, gradeComponents: [], completed: false, pinned: false, collapsed: false, tasks: [] });
+  state.modules.push({ id: uid(), name, ects, grade: null, targetGrade: null, semester, gradeComponents: [], links: [], completed: false, pinned: false, collapsed: false, tasks: [] });
   saveState();
   e.target.reset();
   renderModules();
@@ -1141,6 +1143,69 @@ function gradeHint(m) {
   return `<p class="grade-hint ${cls}">${text}</p>`;
 }
 
+// Nur sichere Weblinks zulassen. Ergänzt fehlendes https:// und lässt nur
+// http(s) durch (keine javascript:/data:-URLs). Rückgabe: saubere URL oder null.
+function sanitizeUrl(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s; // bequem: ohne Schema eingeben erlaubt
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    // Plausibler Host: enthält einen Punkt und keine ungültigen Zeichen.
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) return null;
+    return u.href;
+  } catch (e) { return null; }
+}
+
+// Chips mit anklickbaren Modul-Links (Anzeige in der Modulkarte).
+function renderModuleLinks(wrap, m) {
+  const links = Array.isArray(m.links) ? m.links : [];
+  if (!links.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = links.map((l) =>
+    `<a class="mod-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.url)}">${icon("link")} ${escapeHtml(l.label || l.url)}</a>`
+  ).join("");
+}
+
+// Editor für die Modul-Links (im Bearbeiten-/Body-Bereich).
+function renderLinkEditor(wrap, m) {
+  if (!Array.isArray(m.links)) m.links = [];
+  const rows = m.links.map((l) => `
+    <div class="lk-row" data-lk="${l.id}">
+      <input type="text" class="lk-label" data-lk-label placeholder="z. B. Modulseite" value="${escapeHtml(l.label || "")}" aria-label="Bezeichnung des Links" />
+      <input type="url" class="lk-url" data-lk-url placeholder="https://…" value="${escapeHtml(l.url || "")}" aria-label="Webadresse" />
+      <button class="del-btn" data-lk-del title="Link löschen" aria-label="Link löschen">${icon("close")}</button>
+    </div>`).join("");
+  wrap.innerHTML = `
+    ${m.links.length ? `<div class="lk-head">Links zur Hochschul-Plattform</div>` : ""}
+    ${rows}
+    <button class="link-btn" data-lk-add>${icon("plus")} Link hinzufügen</button>`;
+
+  wrap.querySelector("[data-lk-add]").addEventListener("click", () => {
+    m.links.push({ id: uid(), label: "", url: "" });
+    saveState(); renderModules();
+  });
+  wrap.querySelectorAll(".lk-row").forEach((row) => {
+    const id = row.dataset.lk;
+    const l = m.links.find((x) => x.id === id);
+    if (!l) return;
+    row.querySelector("[data-lk-label]").addEventListener("change", (ev) => {
+      l.label = ev.target.value.trim(); saveState(); renderModules();
+    });
+    row.querySelector("[data-lk-url]").addEventListener("change", (ev) => {
+      const clean = sanitizeUrl(ev.target.value);
+      if (ev.target.value.trim() && !clean) {
+        showSnackbar("Ungültige Adresse — bitte eine gültige Web-URL eingeben.");
+      }
+      l.url = clean || ""; saveState(); renderModules();
+    });
+    row.querySelector("[data-lk-del]").addEventListener("click", () => {
+      m.links = m.links.filter((x) => x.id !== id); saveState(); renderModules();
+    });
+  });
+}
+
 // Teilnoten-Editor für ein Modul (Punkt 4)
 function renderGradeComponents(wrap, m) {
   const comps = m.gradeComponents || [];
@@ -1214,6 +1279,7 @@ function renderModuleCard(m) {
       </div>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="mod-links"></div>
     <div class="module-body">
       <div class="module-controls">
         <label><input type="checkbox" data-complete ${m.completed ? "checked" : ""}/> Abgeschlossen</label>
@@ -1224,6 +1290,7 @@ function renderModuleCard(m) {
       </div>
       ${gradeHint(m)}
       <div class="grade-components"></div>
+      <div class="link-editor"></div>
       <ul class="checklist"></ul>
       <form class="add-task-form"><input type="text" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
     </div>`;
@@ -1236,6 +1303,10 @@ function renderModuleCard(m) {
   // Teilnoten-Editor (Punkt 4)
   const gc = card.querySelector(".grade-components");
   renderGradeComponents(gc, m);
+
+  // Modul-Links: anklickbare Chips + Editor
+  renderModuleLinks(card.querySelector(".mod-links"), m);
+  renderLinkEditor(card.querySelector(".link-editor"), m);
 
   // Checklist items (each as a block: the task row + date + subtasks)
   const ul = card.querySelector(".checklist");
@@ -2183,6 +2254,7 @@ const ICONS = {
   print: '<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/>',
   cap: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
 };
 function icon(name, cls) {
   const p = ICONS[name] || "";

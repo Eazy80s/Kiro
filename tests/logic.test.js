@@ -248,6 +248,25 @@ function semesterSortKey(sem) {
   eq(semesterSortKey("WS26") < semesterSortKey("SS27"), true, "WS26 vor SS27");
 }
 
+/* ---- Link-Sanitizer (Modul-Links zur Hochschul-Plattform) ---- */
+function sanitizeUrl(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) return null;
+    return u.href;
+  } catch (e) { return null; }
+}
+eq(sanitizeUrl("moodle.hs.de/kurs"), "https://moodle.hs.de/kurs", "URL ohne Schema → https ergänzt");
+eq(sanitizeUrl("https://ilias.uni-x.de/goto.php?id=42"), "https://ilias.uni-x.de/goto.php?id=42", "vollständige URL bleibt");
+eq(sanitizeUrl("javascript:alert(1)"), null, "javascript: abgelehnt");
+eq(sanitizeUrl("localhost"), null, "Host ohne Punkt abgelehnt");
+eq(sanitizeUrl("   "), null, "leer → null");
+
 /* ---- Ergebnis ---- */
 console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen.`);
 process.exit(failed ? 1 : 0);

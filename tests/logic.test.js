@@ -180,7 +180,9 @@ function gradeRange(modules) {
 
 /* ---- Lern-Serie / Streak (Punkt 7) ---- */
 function studyStreak(daily, todayStr) {
-  const iso = (d) => d.toISOString().slice(0, 10);
+  // Lokale Datumskomponenten verwenden (wie isoOf in app.js); toISOString() würde
+  // bei positivem UTC-Offset auf den Vortag umspringen.
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   let streak = 0; const d = new Date(todayStr + "T00:00:00");
   if (!(daily[iso(d)] > 0)) d.setDate(d.getDate() - 1);
   for (let i = 0; i < 1000; i++) { if (daily[iso(d)] > 0) { streak++; d.setDate(d.getDate() - 1); } else break; }

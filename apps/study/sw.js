@@ -1,12 +1,14 @@
 /* Simple offline cache for the Study Tracker PWA. Bump CACHE on each release. */
-const CACHE = "study-tracker-v31";
+const CACHE = "study-tracker-v32";
 
 // Eigene Assets (same-origin) — werden beim Install vorab gecacht.
+// supabase-config.js liegt im geteilten Ordner (../shared), damit Launcher
+// und App dieselbe Konfiguration nutzen.
 const ASSETS = [
   "index.html",
   "styles.css",
   "app.js",
-  "supabase-config.js",
+  "../shared/supabase-config.js",
   "manifest.webmanifest",
   "icon.svg",
   "icon-180.png",

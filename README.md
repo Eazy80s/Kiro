@@ -34,9 +34,15 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 Das Repo ist ein kleiner **App-Hub**: Die Wurzel-`index.html` ist ein Launcher
 (Startmenü), die einzelnen Apps liegen in eigenen Ordnern unter `apps/`.
 
-- **Launcher:** `index.html` (Wurzel) → zeigt die verfügbaren Apps als Kacheln.
+- **Launcher:** `index.html` (Wurzel) → zeigt die verfügbaren Apps als Kacheln
+  und bietet eine **zentrale Anmeldung** (Konto): einmal anmelden, alle Apps
+  übernehmen die Session automatisch.
 - **App #1 – Studien-Tracker:** `apps/study/` (eigenständige PWA mit eigenem
-  `app.js`, `styles.css`, `manifest.webmanifest`, `sw.js`, Icons).
+  `app.js`, `styles.css`, `manifest.webmanifest`, `sw.js`, Icons). Oben links
+  führt **„← Apps"** zurück zum Launcher.
+- **Geteilt:** `apps/shared/supabase-config.js` — eine Supabase-Konfiguration für
+  Launcher und Apps. Die Anmelde-Session liegt origin-weit im Browser, deshalb
+  genügt ein Login im Launcher; die Apps synchronisieren dann ihre eigenen Daten.
 
 Weitere Apps kommen später als eigene Ordner unter `apps/` dazu.
 
@@ -69,7 +75,7 @@ Supabase-Projekt synchronisiert die App automatisch zwischen Mac und iPhone.
 3. **Project Settings → API** öffnen und zwei Werte kopieren:
    - **Project URL**
    - **anon public** Key
-4. Diese beiden Werte in [`apps/study/supabase-config.js`](apps/study/supabase-config.js) eintragen
+4. Diese beiden Werte in [`apps/shared/supabase-config.js`](apps/shared/supabase-config.js) eintragen
    (die Platzhalter `DEINE_…` ersetzen) und die Änderung pushen/neu deployen.
    *(Der anon-Key ist für den Browser gedacht und darf öffentlich stehen — der
    Schutz kommt über Login + Row-Level-Security.)*
@@ -110,7 +116,7 @@ Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 | `apps/study/styles.css` | Styling (hell/dunkel über CSS-Variablen) |
 | `apps/study/app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
 | `apps/study/manifest.webmanifest`, `apps/study/sw.js`, `apps/study/icon*` | PWA (installierbar/offline) |
-| `apps/study/supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
+| `apps/shared/supabase-config.js` | Supabase-Zugangsdaten, von Launcher **und** Apps gemeinsam genutzt (Platzhalter — selbst ausfüllen) |
 | `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
 | `tests/logic.test.js` | Automatisierte Tests der Rechenlogik |
 | `tests/security.test.mjs` | Sicherheits-/Migrationstests gegen die echte `app.js` |

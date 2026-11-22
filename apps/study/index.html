@@ -30,6 +30,9 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
+      <a class="app-back" href="../../index.html" title="Zurück zum Startmenü" aria-label="Zurück zum Startmenü">
+        <span aria-hidden="true">←</span> Apps
+      </a>
       <h1 class="brand">🎓 Studien-<br />Tracker</h1>
       <nav class="tabs" role="tablist" aria-label="Hauptbereiche">
         <button id="tab-dashboard" class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="dashboard">Übersicht</button>
@@ -445,7 +448,7 @@
 
   <!-- Supabase-Client (für Geräte-Sync). Lädt aus dem Netz; ohne Netz läuft die App lokal weiter. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="supabase-config.js"></script>
+  <script src="../shared/supabase-config.js"></script>
   <script src="app.js"></script>
   <script>
     // Service Worker registrieren. Updates werden automatisch & unsichtbar

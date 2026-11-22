@@ -3635,7 +3635,7 @@ function renderSyncUI() {
   if (!out || !inn) return;
   if (!syncConfigured()) {
     out.hidden = true; inn.hidden = true;
-    setSyncStatus("Sync nicht eingerichtet. Trage deine Supabase-Daten in supabase-config.js ein (Anleitung im README).");
+    setSyncStatus("Sync nicht eingerichtet. Trage deine Supabase-Daten in apps/shared/supabase-config.js ein (Anleitung im README).");
     return;
   }
   if (syncUser) {

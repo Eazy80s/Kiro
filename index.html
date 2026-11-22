@@ -66,6 +66,34 @@
     .app-tile .app-name { font-size: 1.15rem; font-weight: 650; }
     .app-tile .app-desc { color: var(--muted); font-size: 0.9rem; }
     .launcher-foot { margin-top: 40px; color: var(--muted); font-size: 0.82rem; }
+
+    /* Konto / zentrale Anmeldung */
+    .account {
+      width: 100%; max-width: 420px; margin-top: 40px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow-md);
+    }
+    .account h2 { font-size: 1.1rem; font-weight: 650; margin-bottom: 4px; }
+    .account-hint { color: var(--muted); font-size: 0.88rem; margin-bottom: 16px; }
+    .account-form { display: flex; flex-direction: column; gap: 10px; }
+    .account-form input {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 0.95rem; font-family: inherit;
+      background: var(--bg); color: var(--text);
+    }
+    .account-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .account-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-primary, .btn-secondary {
+      flex: 1 1 auto; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+      font-size: 0.92rem; font-family: inherit; font-weight: 600; border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: transparent; color: var(--text); border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    #account-logged-in p { margin-bottom: 12px; }
+    .account-status { margin-top: 12px; color: var(--muted); font-size: 0.85rem; min-height: 1.2em; }
   </style>
 </head>
 <body>
@@ -82,6 +110,142 @@
     </a>
   </main>
 
+  <section class="account" id="account" aria-label="Konto / Synchronisierung">
+    <h2>Konto</h2>
+    <p class="account-hint" id="account-hint">
+      Melde dich einmal an — alle Apps übernehmen die Anmeldung automatisch.
+    </p>
+
+    <form id="account-form" class="account-form">
+      <input type="email" id="account-email" placeholder="deine@email.de" autocomplete="username" required />
+      <input type="password" id="account-password" placeholder="Passwort" autocomplete="current-password" required minlength="6" />
+      <div class="account-actions">
+        <button type="submit" class="btn-primary">Anmelden</button>
+        <button type="button" id="account-register" class="btn-secondary">Registrieren</button>
+      </div>
+    </form>
+
+    <div id="account-logged-in" hidden>
+      <p>Angemeldet als <strong id="account-user"></strong>.</p>
+      <button type="button" id="account-logout" class="btn-secondary">Abmelden</button>
+    </div>
+
+    <p id="account-status" class="account-status" aria-live="polite"></p>
+  </section>
+
   <footer class="launcher-foot">Weitere Apps folgen.</footer>
+
+  <!-- Supabase-Client + geteilte Konfiguration (für die zentrale Anmeldung). -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="apps/shared/supabase-config.js"></script>
+  <script>
+    /* Zentrale Anmeldung im Launcher. Es wird NUR die Auth-Session verwaltet
+       (Login/Registrieren/Logout) — kein Datenabgleich. Die Supabase-Session
+       liegt origin-weit im localStorage, daher sind die Apps nach dem Login
+       automatisch ebenfalls angemeldet. */
+    (function () {
+      "use strict";
+      var form = document.getElementById("account-form");
+      var emailEl = document.getElementById("account-email");
+      var pwEl = document.getElementById("account-password");
+      var regBtn = document.getElementById("account-register");
+      var loggedIn = document.getElementById("account-logged-in");
+      var userEl = document.getElementById("account-user");
+      var logoutBtn = document.getElementById("account-logout");
+      var statusEl = document.getElementById("account-status");
+      var hintEl = document.getElementById("account-hint");
+
+      function setStatus(msg) { if (statusEl) statusEl.textContent = msg || ""; }
+
+      function configured() {
+        var c = window.SUPABASE_CONFIG;
+        return !!(c && c.url && c.anonKey &&
+          c.url.indexOf("DEINE_") !== 0 && c.anonKey.indexOf("DEIN_") !== 0 &&
+          window.supabase && typeof window.supabase.createClient === "function");
+      }
+
+      if (!configured()) {
+        if (form) form.hidden = true;
+        if (hintEl) hintEl.textContent =
+          "Sync nicht eingerichtet. Trage deine Supabase-Daten in apps/shared/supabase-config.js ein (Anleitung im README).";
+        return;
+      }
+
+      var sb;
+      try {
+        sb = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+      } catch (e) {
+        setStatus("Anmeldedienst konnte nicht gestartet werden: " + (e.message || e));
+        return;
+      }
+
+      function render(user) {
+        var signedIn = !!user;
+        if (form) form.hidden = signedIn;
+        if (loggedIn) loggedIn.hidden = !signedIn;
+        if (signedIn && userEl) userEl.textContent = user.email || "";
+      }
+
+      sb.auth.getSession().then(function (res) {
+        render(res && res.data && res.data.session ? res.data.session.user : null);
+      }).catch(function () {});
+
+      sb.auth.onAuthStateChange(function (_event, session) {
+        render(session ? session.user : null);
+      });
+
+      if (form) form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var email = emailEl.value.trim();
+        var password = pwEl.value;
+        if (!email || !password) return;
+        var btn = form.querySelector("button[type=submit]");
+        if (btn) btn.disabled = true;
+        setStatus("Anmeldung läuft …");
+        sb.auth.signInWithPassword({ email: email, password: password }).then(function (r) {
+          if (r.error) throw r.error;
+          setStatus("Angemeldet.");
+        }).catch(function (err) {
+          var msg = (err && (err.message || err.error_description)) || String(err);
+          if (/invalid login|invalid_credentials|credentials/i.test(msg)) {
+            setStatus("E-Mail oder Passwort falsch. Noch kein Konto? Auf „Registrieren“ tippen.");
+          } else {
+            setStatus("Anmeldung fehlgeschlagen: " + msg);
+          }
+        }).finally(function () {
+          if (btn) setTimeout(function () { btn.disabled = false; }, 1500);
+        });
+      });
+
+      if (regBtn) regBtn.addEventListener("click", function () {
+        var email = emailEl.value.trim();
+        var password = pwEl.value;
+        if (!email || !password) { setStatus("Bitte E-Mail und ein Passwort (min. 6 Zeichen) eingeben."); return; }
+        if (password.length < 6) { setStatus("Das Passwort muss mindestens 6 Zeichen haben."); return; }
+        regBtn.disabled = true;
+        setStatus("Konto wird erstellt …");
+        sb.auth.signUp({ email: email, password: password }).then(function (r) {
+          if (r.error) throw r.error;
+          if (r.data && r.data.session) setStatus("Konto erstellt und angemeldet.");
+          else setStatus("Konto erstellt. Falls eine Bestätigungsmail kommt: einmal bestätigen, danach direkt anmelden.");
+        }).catch(function (err) {
+          var msg = (err && (err.message || err.error_description)) || String(err);
+          if (/already registered|already exists|user_already/i.test(msg)) {
+            setStatus("Für diese E-Mail gibt es schon ein Konto — bitte einfach „Anmelden“.");
+          } else {
+            setStatus("Registrierung fehlgeschlagen: " + msg);
+          }
+        }).finally(function () {
+          setTimeout(function () { regBtn.disabled = false; }, 1500);
+        });
+      });
+
+      if (logoutBtn) logoutBtn.addEventListener("click", function () {
+        sb.auth.signOut().then(function () {
+          setStatus("Abgemeldet. Die Apps laufen weiterhin lokal.");
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

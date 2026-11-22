@@ -202,18 +202,33 @@ eq(api.migrate(undefined).modules, [], "migrate(undefined) → leere Module");
    Diese Logik entscheidet, welcher Stand gewinnt — ein Fehler hier bedeutet
    echten Datenverlust über Geräte hinweg. Darum eng abgedeckt. */
 const SD = api.syncDecision;
-// Server noch leer → lokalen Stand hochladen (egal welche Zeitstempel).
-eq(SD(100, 0, 0, false), "upload", "Sync: leerer Server → upload");
+// Neue Signatur: syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote, localHasData, remoteHasData)
+// Substanz schlägt Zeitstempel: Ein leerer Stand darf einen Stand mit Daten
+// NIE überschreiben (behebt den Datenverlust beim Anmelden eines leeren Geräts).
+
+// --- Substanz-Regeln (unabhängig von den Zeitstempeln) ---
+// Server noch leer → lokalen Stand hochladen.
+eq(SD(100, 0, 0, false, true, false), "upload", "Sync: leerer Server → upload");
+// Remote hat Daten, lokal LEER → immer übernehmen, selbst wenn lokal „neuer" ist.
+// (Das ist der iPhone-Fall: frisch gebootetes, leeres Gerät zieht die Daten,
+//  statt seinen leeren Stand hochzuladen und die vollen Serverdaten zu löschen.)
+eq(SD(999, 100, 0, true, false, true), "apply", "Sync: lokal leer, Remote hat Daten → apply (kein Datenverlust)");
+// Lokal hat Daten, Remote LEER → niemals den leeren Server übernehmen, lokal gewinnt.
+eq(SD(100, 999, 0, true, true, false), "upload", "Sync: Remote leer, lokal hat Daten → upload (lokal gewinnt)");
+// Beide leer → hochladen (egal, nichts zu verlieren).
+eq(SD(100, 200, 0, true, false, false), "upload", "Sync: beide leer → upload");
+
+// --- Zeitstempel-Regeln, wenn BEIDE Seiten Daten haben ---
 // Remote älter/gleich → lokal ist aktuell, hochladen.
-eq(SD(200, 100, 50, true), "upload", "Sync: Remote älter → upload");
-eq(SD(200, 200, 50, true), "upload", "Sync: gleich alt → upload (kein Überschreiben)");
+eq(SD(200, 100, 50, true, true, true), "upload", "Sync: Remote älter → upload");
+eq(SD(200, 200, 50, true, true, true), "upload", "Sync: gleich alt → upload (kein Überschreiben)");
 // Remote neuer, lokal seit letztem Sync NICHT geändert → Server gewinnt klar.
-eq(SD(100, 200, 100, true), "apply", "Sync: Remote neuer, kein Lokal-Edit → apply");
+eq(SD(100, 200, 100, true, true, true), "apply", "Sync: Remote neuer, kein Lokal-Edit → apply");
 // Remote neuer, lokal seit letztem Sync geändert → echter Konflikt (Rückfrage).
-eq(SD(300, 400, 100, true), "conflict", "Sync: Remote neuer + Lokal-Edit → conflict");
-// Erststart ohne je gesyncten Stand (lastSyncedRemoteTs=0): kein „Konflikt",
-// sondern Server übernehmen — sonst würde jeder Erstabgleich fälschlich fragen.
-eq(SD(300, 400, 0, true), "apply", "Sync: Remote neuer, noch nie gesynct → apply (kein Fehlalarm)");
+eq(SD(300, 400, 100, true, true, true), "conflict", "Sync: Remote neuer + Lokal-Edit → conflict");
+// Erstabgleich mit Daten auf BEIDEN Seiten (lastSyncedRemoteTs=0): NICHT mehr stumm
+// übernehmen, sondern Rückfrage — genau hier ging früher der Fortschritt verloren.
+eq(SD(300, 400, 0, true, true, true), "conflict", "Sync: Erstabgleich, beide haben Daten → conflict (Rückfrage)");
 
 /* ---- Noten je Semester (Dashboard-Verlauf) ---- */
 const gbs = api.gradesBySemester;

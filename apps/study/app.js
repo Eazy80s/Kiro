@@ -3709,9 +3709,15 @@ function saveStateLocalOnly() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
 }
 
+// Erst nach dem ersten erfolgreichen Abgleich (pullAndMerge) nach dem Login
+// darf hochgeladen werden. Sonst könnte ein frisch gebootetes, LEERES Gerät
+// durch ein beiläufiges saveState() beim Start seinen leeren Stand hochladen,
+// BEVOR der Pull die Serverdaten holt — und so die vollen Daten überschreiben.
+let initialPullDone = false;
+
 // Debounced Upload nach jeder Änderung.
 function scheduleSyncUpload() {
-  if (!sb || !syncUser || syncApplying) return;
+  if (!sb || !syncUser || syncApplying || !initialPullDone) return;
   clearTimeout(syncUploadTimer);
   syncUploadTimer = setTimeout(uploadState, 1200);
 }
@@ -3748,20 +3754,43 @@ function backupBeforeOverwrite() {
 
 // Reine Entscheidungslogik des Sync-Abgleichs (ohne Netz/DOM), damit sie
 // isoliert testbar ist. Liefert, WAS zu tun ist — pullAndMerge führt es aus.
-//   hasRemote=false                     → "upload"  (Server noch leer)
-//   remoteTs <= localTs                 → "upload"  (lokal ist aktuell/neuer)
-//   remoteTs  > localTs, kein Lokal-Edit→ "apply"   (Server gewinnt, unstrittig)
-//   remoteTs  > localTs, Lokal-Edit     → "conflict"(Rückfrage nötig)
-// "Lokal-Edit seit letztem Sync" = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0.
-function syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote) {
-  if (!hasRemote) return "upload";
+//
+// WICHTIG: Substanz schlägt Zeitstempel. Ein frisch gebootetes, LEERES Gerät
+// bekommt beim ersten saveState() einen sehr aktuellen updatedAt-Zeitstempel,
+// obwohl es keine echten Daten hat. Würde nur „neuer gewinnt" gelten, könnte
+// dieses leere Gerät die vollen Serverdaten überschreiben (Datenverlust beim
+// Anmelden auf einem neuen Gerät). Darum zuerst die Datenlage prüfen:
+//   remote hat Daten, lokal leer      → "apply"  (Daten holen, nie leer hochladen)
+//   lokal hat Daten, remote leer      → "upload" (vollen Stand behalten)
+//   beide leer / Server leer          → "upload"
+// Erst wenn BEIDE Seiten Daten haben, zählen die Zeitstempel:
+//   remoteTs <= localTs               → "upload"   (lokal ist aktuell/neuer)
+//   remoteTs  > localTs, kein Lokal-Edit, schon mal gesynct → "apply"
+//   sonst (Lokal-Edit ODER Erstabgleich mit Daten beidseits) → "conflict"
+function syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote, localHasData, remoteHasData) {
+  if (!hasRemote || !remoteHasData) return "upload"; // Server leer/ohne Daten → lokal hochladen
+  if (!localHasData) return "apply";                  // lokal leer, Remote hat Daten → immer übernehmen
+  // Ab hier: beide Seiten haben echte Daten.
   if (!(remoteTs > localTs)) return "upload";
   const localChangedSinceSync = localTs > lastSyncedRemoteTs && lastSyncedRemoteTs > 0;
-  return localChangedSinceSync ? "conflict" : "apply";
+  const firstSyncWithData = lastSyncedRemoteTs === 0; // Erstabgleich → sicherheitshalber fragen
+  return (localChangedSinceSync || firstSyncWithData) ? "conflict" : "apply";
 }
 
+// Hat ein Zustand echten Nutzerinhalt? (Module oder Termine). Lernzeit/Pomodoro
+// zählen bewusst NICHT — sie allein sollen keinen leeren Stand „voll" erscheinen
+// lassen und so den Schutz gegen Überschreiben aushebeln.
+function stateHasData(s) {
+  if (!s || typeof s !== "object") return false;
+  const mods = Array.isArray(s.modules) ? s.modules.length : 0;
+  const evs = Array.isArray(s.events) ? s.events.length : 0;
+  return (mods + evs) > 0;
+}
+
+let syncInFlight = false;
 async function pullAndMerge() {
-  if (!sb || !syncUser) return;
+  if (!sb || !syncUser || syncInFlight) return; // kein paralleler Abgleich (sonst doppelte Konflikt-Dialoge)
+  syncInFlight = true;
   try {
     setSyncStatus("Lade Daten …");
     const { data, error } = await sb.from("app_state").select("data, updated_at").eq("user_id", syncUser.id).maybeSingle();
@@ -3770,13 +3799,22 @@ async function pullAndMerge() {
     const hasRemote = !!(data && data.data);
     const remote = hasRemote ? data.data : null;
     const remoteTs = hasRemote ? (remote.updatedAt || new Date(data.updated_at).getTime() || 0) : 0;
+    const localHasData = stateHasData(state);
+    const remoteHasData = stateHasData(remote);
 
-    const decision = syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote);
+    const decision = syncDecision(localTs, remoteTs, lastSyncedRemoteTs, hasRemote, localHasData, remoteHasData);
 
     if (decision === "conflict") {
       backupBeforeOverwrite();
+      const countOf = (s) => {
+        const m = (s && Array.isArray(s.modules)) ? s.modules.length : 0;
+        const e = (s && Array.isArray(s.events)) ? s.events.length : 0;
+        return `${m} Module, ${e} Termine`;
+      };
       const ok = confirm(
-        "Konflikt erkannt: Auf einem anderen Gerät wurden neuere Änderungen gespeichert.\n\n" +
+        "Konflikt erkannt: lokaler Stand und Server-Stand unterscheiden sich.\n\n" +
+        `• Server:  ${countOf(remote)}\n` +
+        `• Dieses Gerät:  ${countOf(state)}\n\n` +
         "• OK: Server-Stand übernehmen (dein lokaler Stand wird als Sicherung behalten).\n" +
         "• Abbrechen: deinen lokalen Stand behalten und hochladen."
       );
@@ -3791,8 +3829,11 @@ async function pullAndMerge() {
       await uploadState();
       lastSyncedRemoteTs = state.updatedAt || Date.now();
     }
+    initialPullDone = true; // ab jetzt sind Uploads sicher
   } catch (e) {
     setSyncStatus("Sync-Fehler: " + (e.message || e));
+  } finally {
+    syncInFlight = false;
   }
 }
 
@@ -4042,6 +4083,8 @@ if (syncLogoutBtn) {
     if (!sb) return;
     await sb.auth.signOut();
     syncUser = null;
+    initialPullDone = false;   // nächster Login muss erst wieder pullen
+    lastSyncedRemoteTs = 0;
     renderSyncUI();
     setSyncStatus("Abgemeldet. Die App läuft weiterhin lokal.");
   });

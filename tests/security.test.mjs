@@ -35,6 +35,9 @@ function makeEl() {
     setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
     querySelector() { return makeEl(); }, querySelectorAll() { return []; },
     focus() {}, blur() {}, click() {}, closest() { return null; },
+    // Audio-Element-Stubs (Fokus-Radio ruft diese beim Boot):
+    play() { return Promise.resolve(); }, pause() {}, load() {},
+    paused: true, volume: 1, dataset: {},
     // escapeHtml nutzt div.textContent = str; return div.innerHTML — hier echt nachbilden:
     set textContent(v) { this._text = String(v); this.innerHTML = htmlEscape(String(v)); },
     get textContent() { return this._text || ""; },
@@ -339,6 +342,40 @@ const mkt = api.makeTask;
 eq(api.migrate({}).dashCols, 1, "migrate: Dashboard-Spalten Standard = 1");
 eq(api.migrate({ dashCols: 2 }).dashCols, 2, "migrate: dashCols=2 bleibt");
 eq(api.migrate({ dashCols: 5 }).dashCols, 1, "migrate: ungültige dashCols → 1");
+
+/* ---- migrate: Fokus-Radio (URL gehärtet) ---- */
+{
+  const d = api.migrate({ radio: { url: "stream.dlf.de/live.mp3", label: "DLF", volume: 0.3 } });
+  eq(d.radio.url, "https://stream.dlf.de/live.mp3", "migrate: Radio-URL gehärtet (https ergänzt)");
+  eq(d.radio.volume, 0.3, "migrate: Radio-Lautstärke bleibt");
+  eq(api.migrate({ radio: { url: "javascript:x", volume: 9 } }).radio.url, "", "migrate: böse Radio-URL verworfen");
+  eq(api.migrate({}).radio, { url: "", label: "", volume: 0.6 }, "migrate: Radio-Default");
+}
+
+/* ---- nextModuleDue / dueStatusAt ---- */
+const nmd = api.nextModuleDue, dsa = api.dueStatusAt;
+{
+  const mod = { tasks: [
+    { done: false, date: "2026-11-28" },
+    { done: false, date: "2026-11-25" },   // früheste offene → die zählt
+    { done: true, date: "2026-11-20" },    // erledigt → ignoriert
+    { done: false, date: null },           // ohne Datum → ignoriert
+  ]};
+  eq(nmd(mod, "2026-11-23").date, "2026-11-25", "nextModuleDue: früheste offene datierte Aufgabe");
+  eq(nmd({ tasks: [{ done: true, date: "2026-11-25" }] }, "2026-11-23"), null, "nextModuleDue: nichts offen → null");
+}
+eq(dsa("2026-11-23", "2026-11-23").cls, "due-today", "dueStatusAt: heute");
+eq(dsa("2026-11-24", "2026-11-23").cls, "due-soon", "dueStatusAt: morgen → due-soon");
+eq(dsa("2026-11-20", "2026-11-23").cls, "overdue", "dueStatusAt: vergangen → overdue");
+
+/* ---- buildHeatmap ---- */
+{
+  const hm = api.buildHeatmap({ "2026-11-20": 3600, "2026-11-23": 1800 }, "2026-11-23", 30);
+  eq(hm.maxSec, 3600, "buildHeatmap: Maximum erkannt");
+  const allCells = hm.weeks.reduce((a, w) => a + w.length, 0);
+  eq(allCells >= 30, true, "buildHeatmap: deckt mindestens das Fenster ab");
+  eq(Array.isArray(hm.weeks[0]), true, "buildHeatmap: Wochen sind Spalten-Arrays");
+}
 
 /* ---- ECTS-Studienziel ---- */
 const ep = api.ectsProgress;

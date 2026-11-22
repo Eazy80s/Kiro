@@ -212,6 +212,14 @@
           <select id="pomo-task" hidden aria-label="Aufgabe (optional)"><option value="">Ganzes Modul</option></select>
         </div>
         <div id="pomo-count" class="pomo-count">Abgeschlossene Fokus-Einheiten: 0</div>
+
+        <!-- Kompakter Fokus-Radio-Player (nur sichtbar, wenn ein Stream hinterlegt ist) -->
+        <div id="radio-player" class="radio-player" hidden>
+          <button id="radio-toggle" class="icon-btn" title="Wiedergabe" aria-label="Radio abspielen/pausieren">▶</button>
+          <span id="radio-label" class="radio-label muted"></span>
+          <input type="range" id="radio-volume" min="0" max="1" step="0.05" value="0.6" aria-label="Lautstärke" />
+          <audio id="radio-audio" preload="none"></audio>
+        </div>
       </div>
 
       <h2>Lernzeit</h2>
@@ -229,6 +237,11 @@
         </div>
         <div id="study-stats" class="study-stats"></div>
         <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen. Die Balken-Ziele kannst du in den Einstellungen anpassen.</p>
+      </div>
+
+      <h2>Lernzeit im Jahr</h2>
+      <div class="pomodoro-card">
+        <div id="study-heatmap" class="study-heatmap"></div>
       </div>
 
       <div class="pomo-two-col">
@@ -282,10 +295,24 @@
         <p class="muted">Melde dich an, damit deine Daten automatisch zwischen Mac und iPhone synchronisiert werden. Ohne Anmeldung läuft die App wie bisher nur lokal.</p>
         <div id="sync-area">
           <div id="sync-logged-out">
-            <form id="sync-login-form" class="inline-form">
-              <input type="email" id="sync-email" placeholder="deine@email.de" required />
-              <button type="submit" class="primary-btn">Anmeldelink senden</button>
+            <!-- Primär: E-Mail + Passwort (kein Mail-Zugriff nötig) -->
+            <form id="sync-pw-form" class="sync-pw-form">
+              <input type="email" id="sync-email" placeholder="deine@email.de" autocomplete="username" required />
+              <input type="password" id="sync-password" placeholder="Passwort" autocomplete="current-password" required minlength="6" />
+              <div class="data-actions">
+                <button type="submit" class="primary-btn">Anmelden</button>
+                <button type="button" id="sync-register-btn" class="secondary-btn">Registrieren</button>
+              </div>
             </form>
+            <!-- Alternative: Anmeldelink per E-Mail (Magic Link) -->
+            <details class="sync-magic">
+              <summary>Lieber per E-Mail-Link anmelden</summary>
+              <p class="muted">Du bekommst einen einmaligen Link per E-Mail — praktisch, wenn du dir kein Passwort merken willst.</p>
+              <form id="sync-login-form" class="inline-form">
+                <input type="email" id="sync-magic-email" placeholder="deine@email.de" required />
+                <button type="submit" class="primary-btn">Anmeldelink senden</button>
+              </form>
+            </details>
           </div>
           <div id="sync-logged-in" hidden>
             <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
@@ -364,6 +391,24 @@
           </label>
         </div>
         <p id="data-status" class="muted"></p>
+      </details>
+
+      <details class="settings-group">
+        <summary>Fokus-Radio (Pomodoro)</summary>
+        <p class="muted">Hinterlege einen Internet-Radio-Stream, der im Pomodoro-Tab per Play-Knopf läuft. Wähle einen Sender oder trage eine eigene Stream-URL ein. Hinweis: Auf dem iPhone spielt der Ton nur, solange die App im Vordergrund ist.</p>
+        <form id="radio-form" class="pomo-settings">
+          <label>Sender
+            <select id="radio-preset">
+              <option value="">— eigene URL —</option>
+            </select>
+          </label>
+          <label>Stream-URL
+            <input type="url" id="radio-url" placeholder="https://… (z. B. ein Lofi-Stream)" />
+          </label>
+          <button type="submit" class="primary-btn">Speichern</button>
+          <button type="button" id="radio-clear" class="secondary-btn">Entfernen</button>
+        </form>
+        <p id="radio-status" class="muted"></p>
       </details>
 
       <details class="settings-group" id="shortcuts-group">

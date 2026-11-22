@@ -14,7 +14,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **🗄️ Modul-Archiv** – die Modul-Abschnitte (In Bearbeitung / Demnächst / Abgeschlossen) sind einklappbar; „Abgeschlossen" startet eingeklappt.
 - **🎌 Feiertage** – bundesweite gesetzliche Feiertage werden im Kalender markiert (inkl. beweglicher wie Ostern/Pfingsten).
 - **🎓 Noten** – deutsche Skala 1,0–5,0 (bestanden bis 4,0), **Wunschnote** je Modul, ECTS-gewichteter Durchschnitt.
-- **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich, **je Modul** und optional **je Aufgabe**, mit einstellbaren **Zielen**.
+- **⏱️ Pomodoro** – Fokus-Timer mit eigenen Zeiten, läuft auch im Hintergrund-Tab genau; **Lernzeit** täglich/wöchentlich/monatlich/jährlich, **je Modul** und optional **je Aufgabe**, mit einstellbaren **Zielen**; optionaler **Fokus-Radio-Player** (Internet-Stream per URL). **Jahres-Heatmap** der Lernzeit.
 - **🎯 Fokus heute** – zeigt die für heute geplanten Aufgaben inkl. Teilaufgaben, mit **Schnelleingabe** zum direkten Hinzufügen einer Aufgabe für heute.
 - **📊 Noten je Semester** – Verlauf des ECTS-gewichteten Schnitts pro Semester mit Trend gegenüber dem Vorsemester (im Dashboard, ab zwei benoteten Semestern).
 - **🔗 Modul-Weblinks im Dashboard** – bei einem angehefteten Modul werden eingetragene Weblinks als anklickbare Chips auch unter „Aktuell in Bearbeitung" angezeigt.
@@ -25,7 +25,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **📈 Noten-Prognose** – benötigter Schnitt für ein Ziel + bester/schlechtester möglicher Endschnitt.
 - **🗂️ Drag & Drop** – Module und Aufgaben per Ziehen umsortieren.
 - **🎨 Eigene Terminfarben**, **🖨️ Druck-/PDF-Semesterübersicht**, **🔥 Lern-Serie (Streak)**.
-- **☁️ Geräte-Sync** (Supabase) mit **Konflikt-Warnung**, lokaler Sicherung und **Online/Offline-Anzeige**.
+- **☁️ Geräte-Sync** (Supabase) mit Login per **E-Mail + Passwort** oder **Anmeldelink**, **Konflikt-Warnung**, lokaler Sicherung und **Online/Offline-Anzeige**.
 - **💾 Daten** – Export/Import als `.json`, `.ics`-Kalenderexport, Zurücksetzen; **Löschen mit „Rückgängig“**; **Fehlerprotokoll**.
 - **📱 Installierbar** (PWA) – auf dem iPhone „Zum Home-Bildschirm“, funktioniert offline (benötigt HTTPS-Hosting, siehe unten).
 

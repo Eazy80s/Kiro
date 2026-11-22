@@ -75,6 +75,9 @@ check(dom.includes('id="dash-col-1"') && dom.includes('id="dash-col-2"'), "Dashb
 check(!dom.includes('id="overall-mode"'), "Totes #overall-mode-Markup entfernt");
 check(dom.includes('id="dash-onboarding"'), "Onboarding-Block (leere App) vorhanden");
 check(dom.includes('id="shortcuts-group"'), "Tastenkürzel-Übersicht vorhanden");
+check(dom.includes('id="study-heatmap"'), "Lernzeit-Jahres-Heatmap vorhanden");
+check(dom.includes('id="radio-player"') && dom.includes('id="radio-audio"'), "Fokus-Radio-Player vorhanden");
+check(dom.includes('id="sync-pw-form"') && dom.includes('id="sync-password"'), "Login mit E-Mail + Passwort vorhanden");
 check(dom.includes('id="ics-import-file"'), "ICS-Import vorhanden");
 check(dom.includes('role="tablist"'), "Tabs mit ARIA-tablist");
 // Lernplan: Typ (Vorlesung/Aufgabe) + Link erscheinen nur nach Laden der Beispieldaten,

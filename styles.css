@@ -191,6 +191,12 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .pomo-time { font-size: 3.2rem; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .pomo-controls { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .pomo-count { color: var(--muted); font-size: 0.82rem; margin-top: 10px; }
+/* Fokus-Radio-Player (kompakt) */
+.radio-player { display: flex; align-items: center; gap: 10px; justify-content: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.radio-player[hidden] { display: none; }
+.radio-player .icon-btn { width: 38px; height: 38px; flex: 0 0 auto; }
+.radio-label { font-size: 0.82rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-player input[type="range"] { flex: 0 1 120px; accent-color: var(--accent); cursor: pointer; }
 .pomo-settings { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
 .pomo-settings label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: var(--muted); }
 .pomo-settings input { width: 110px; }
@@ -514,7 +520,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .module-card.collapsed .module-head { margin-bottom: 6px; }
 .module-card.collapsed .progress-bar { margin-bottom: 0; height: 6px; }
 .module-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
-.module-head h3 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.module-head h3 { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.due-badge.mod-due { font-weight: 500; }
 .collapse-btn {
   background: transparent; border: none; cursor: pointer; color: var(--muted);
   font-size: 0.85rem; padding: 0 2px; line-height: 1; width: 16px;
@@ -651,6 +658,19 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .study-chart .chart-svg { width: 100%; height: auto; display: block; }
 .chart-label { fill: var(--muted); font-size: 9px; }
 
+/* Lernzeit-Jahres-Heatmap (GitHub-Stil) */
+.study-heatmap { overflow-x: auto; }
+.hm-grid { display: inline-flex; gap: 3px; padding-bottom: 4px; }
+.hm-col { display: flex; flex-direction: column; gap: 3px; }
+.hm-cell { width: 11px; height: 11px; border-radius: 2px; background: var(--surface-2); flex: 0 0 auto; }
+.hm-l0 { background: var(--surface-2); }
+.hm-l1 { background: color-mix(in srgb, var(--accent) 25%, var(--surface-2)); }
+.hm-l2 { background: color-mix(in srgb, var(--accent) 50%, var(--surface-2)); }
+.hm-l3 { background: color-mix(in srgb, var(--accent) 75%, var(--surface-2)); }
+.hm-l4 { background: var(--accent); }
+.hm-legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 0.74rem; }
+.hm-legend .hm-cell { width: 11px; height: 11px; }
+
 /* Notenschnitt-Prognose (Punkt 7) */
 .forecast-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; }
 
@@ -696,6 +716,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .color-label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
 .color-label input[type="color"] { width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 6px; padding: 0; background: none; cursor: pointer; }
 
+/* Login mit E-Mail + Passwort + Magic-Link-Alternative */
+.sync-pw-form { display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.sync-pw-form input { width: 100%; }
+.sync-pw-form .data-actions { margin: 0; }
+.sync-magic { margin-top: 14px; }
+.sync-magic > summary { cursor: pointer; font-size: 0.86rem; color: var(--accent); }
+.sync-magic[open] > summary { margin-bottom: 8px; }
+
 /* Online/Offline-Badge (Punkt 3) */
 .conn-badge { display: inline-block; font-size: 0.8rem; margin: 6px 0; }
 .conn-badge.online { color: var(--accent-2); }
@@ -734,6 +762,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .print-view .pv-wk-item { font-size: 0.86rem; margin: 1px 0; }
 .print-view .pv-wk-time { font-weight: 600; }
 .print-view .pv-wk-type { color: #777; font-size: 0.8rem; }
+/* Monatsüberblick im Druck */
+.print-view .pv-month th { width: 14.28%; }
+.print-view .pv-month .pv-mo-cell { vertical-align: top; height: 68px; font-size: 0.72rem; }
+.print-view .pv-month .pv-mo-empty { background: #fafafa; }
+.print-view .pv-mo-num { font-weight: 700; display: block; margin-bottom: 2px; }
+.print-view .pv-mo-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.print-view .pv-mo-more { color: #777; }
 
 /* Kopf im App-Look (Akzent-Unterstrich) */
 .print-view .pv-head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2.5px solid #4f46e5; padding-bottom: 6px; margin-bottom: 14px; }

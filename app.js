@@ -84,6 +84,13 @@ function migrate(data) {
   data.ectsTarget = Number(data.ectsTarget) > 0 ? Number(data.ectsTarget) : 0;
   // Dashboard-Spalten: 1 (Standard, ruhig) oder 2 (kompakt, nebeneinander).
   data.dashCols = (Number(data.dashCols) === 2) ? 2 : 1;
+  // Fokus-Radio: Stream-URL (http(s), gehärtet) oder "". Lautstärke 0..1.
+  if (!data.radio || typeof data.radio !== "object") data.radio = {};
+  data.radio = {
+    url: sanitizeUrl(data.radio.url) || "",
+    label: String(data.radio.label || "").slice(0, 80),
+    volume: (typeof data.radio.volume === "number" && data.radio.volume >= 0 && data.radio.volume <= 1) ? data.radio.volume : 0.6,
+  };
   // Einstellungen des Wochen-Stundenrasters: Fenster (Start/Ende-Stunde) und
   // Standard-Dauer neuer/zeitlich gesetzter Blöcke in Minuten.
   if (!data.weekGrid || typeof data.weekGrid !== "object") data.weekGrid = {};
@@ -465,13 +472,27 @@ function gradeRange() {
 /* ---------- Fälligkeits-Status einer Aufgabe (Punkt 5) ---------- */
 // Gibt { cls, label } zurück, basierend auf t.date relativ zu heute.
 function dueStatus(dateStr) {
+  return dueStatusAt(dateStr, todayIso());
+}
+// Nächste anstehende (offene, terminierte) Aufgabe eines Moduls ab heute.
+// Rückgabe: { date, status } oder null. Reine Funktion → testbar.
+function nextModuleDue(module, todayStr) {
+  const open = (module.tasks || [])
+    .filter((t) => !t.done && t.date && t.date >= todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!open.length) return null;
+  return { date: open[0].date, status: dueStatusAt(open[0].date, todayStr) };
+}
+// Wie dueStatus, aber mit explizitem „heute" (testbar, ohne globale Zeit).
+function dueStatusAt(dateStr, todayStr) {
   if (!dateStr) return null;
-  const diff = daysBetween(todayIso(), dateStr);
+  const diff = daysBetween(todayStr, dateStr);
   if (diff < 0) return { cls: "overdue", label: `überfällig (${Math.abs(diff)} ${Math.abs(diff) === 1 ? "Tag" : "Tage"})` };
   if (diff === 0) return { cls: "due-today", label: "heute fällig" };
   if (diff <= 3) return { cls: "due-soon", label: diff === 1 ? "morgen fällig" : `in ${diff} Tagen` };
   return { cls: "due-later", label: `in ${diff} Tagen` };
 }
+
 // Alle offenen, terminierten Aufgaben mit Fälligkeitsinfo (für Dashboard-Sektion).
 function tasksByDue() {
   const out = [];
@@ -1787,6 +1808,8 @@ if (quickTaskForm) {
     mod.tasks.push(makeTask({ text, date: todayIso() }));
     saveState();
     textEl.value = "";
+    // Fokus im Feld lassen → mehrere Aufgaben schnell nacheinander eingeben.
+    setTimeout(() => { const el = document.getElementById("quick-task-text"); if (el) el.focus(); }, 0);
     renderDashboard();
     renderModules(); // Modul-Tab konsistent halten
     showSnackbar(`Aufgabe „${text}“ für heute zu „${mod.name}“ hinzugefügt.`);
@@ -2197,6 +2220,9 @@ function renderModuleCard(m) {
   const pct = moduleProgress(m);
   const done = m.tasks.filter((t) => t.done).length;
   const hasComponents = m.gradeComponents && m.gradeComponents.length > 0;
+  // Nächste anstehende Fälligkeit (nur bei offenen Modulen relevant).
+  const nd = m.completed ? null : nextModuleDue(m, todayIso());
+  const dueBadgeHead = nd ? `<span class="due-badge ${nd.status.cls} mod-due">${nd.status.label}</span>` : "";
   const card = document.createElement("div");
   card.className = "module-card" + (m.completed ? " completed" : "") + (m.collapsed ? " collapsed" : "");
   card.draggable = true;
@@ -2210,6 +2236,7 @@ function renderModuleCard(m) {
         ${m.ects ? `<span class="badge">${m.ects} ECTS</span>` : ""}
         ${m.semester ? `<span class="badge sem">${escapeHtml(m.semester)}</span>` : ""}
         ${m.completed ? `<span class="badge done">✓ fertig</span>` : ""}
+        ${dueBadgeHead}
       </h3>
       <div class="module-actions">
         <span class="pct">${done}/${m.tasks.length} · ${pct}%</span>
@@ -2232,7 +2259,7 @@ function renderModuleCard(m) {
       <div class="grade-components"></div>
       <div class="link-editor"></div>
       <ul class="checklist"></ul>
-      <form class="add-task-form"><input type="text" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
+      <form class="add-task-form"><input type="text" id="add-task-${m.id}" placeholder="Neuer Checklisten-Eintrag …" required /><button type="submit" class="primary-btn">Hinzufügen</button></form>
     </div>`;
 
   // Collapse/expand toggle
@@ -2288,7 +2315,7 @@ function renderModuleCard(m) {
         </label>
       </div>
       <ul class="subtask-list"></ul>
-      <form class="add-subtask-form"><input type="text" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
+      <form class="add-subtask-form"><input type="text" id="add-subtask-${t.id}" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
 
     // Subtasks
     const subUl = li.querySelector(".subtask-list");
@@ -3093,6 +3120,61 @@ function renderStudyChart() {
     ? `<p class="empty-state">Noch keine Lernzeit in den letzten 14 Tagen.</p>`
     : `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" role="img" aria-label="Lernzeit der letzten 14 Tage">${bars}</svg>
        <p class="muted" style="text-align:center;margin-top:6px;">Gesamt: ${formatDuration(total)} in 14 Tagen</p>`;
+  renderStudyHeatmap();
+}
+
+// Baut die Wochen-Spalten (Mo-first) für eine Jahres-Heatmap der Lernzeit.
+// Reine Funktion → testbar. Gibt { weeks:[[{iso,sec,empty}]], maxSec } zurück.
+// `daily` = { "YYYY-MM-DD": sekunden }, `todayIso` = heutiger Tag, `days` = Fenster.
+function buildHeatmap(daily, todayStr, days) {
+  const span = days || 365;
+  const today = new Date(todayStr + "T00:00:00");
+  const start = new Date(today); start.setDate(start.getDate() - (span - 1));
+  // Auf Wochenbeginn (Montag) zurückrücken, damit die erste Spalte voll ist.
+  const startOff = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - startOff);
+  const weeks = [];
+  let cur = [];
+  let maxSec = 0;
+  const d = new Date(start);
+  while (d <= today) {
+    const iso = isoOf(d);
+    const inRange = new Date(iso + "T00:00:00") >= new Date(todayStr + "T00:00:00") || true; // alle bis heute
+    const sec = daily[iso] || 0;
+    if (sec > maxSec) maxSec = sec;
+    cur.push({ iso, sec, dow: (d.getDay() + 6) % 7 });
+    if ((d.getDay() + 6) % 7 === 6) { weeks.push(cur); cur = []; }
+    d.setDate(d.getDate() + 1);
+    void inRange;
+  }
+  if (cur.length) weeks.push(cur);
+  return { weeks, maxSec };
+}
+
+// Jahres-Heatmap (GitHub-Stil): ein Feld pro Tag, Farbintensität = Lernzeit.
+function renderStudyHeatmap() {
+  const wrap = document.getElementById("study-heatmap");
+  if (!wrap) return;
+  const { weeks, maxSec } = buildHeatmap(stats.daily || {}, todayIso(), 365);
+  if (maxSec === 0) { wrap.innerHTML = `<p class="empty-state">Noch keine Lernzeit im letzten Jahr.</p>`; return; }
+  // 4 Intensitätsstufen relativ zum Maximum.
+  const level = (sec) => {
+    if (!sec) return 0;
+    const r = sec / maxSec;
+    return r > 0.66 ? 4 : r > 0.33 ? 3 : r > 0 ? 2 : 1;
+  };
+  const cells = weeks.map((wk) => {
+    const col = wk.map((day) =>
+      `<div class="hm-cell hm-l${level(day.sec)}" title="${formatDate(day.iso)}: ${formatDuration(day.sec)}"></div>`
+    ).join("");
+    return `<div class="hm-col">${col}</div>`;
+  }).join("");
+  const totalSec = Object.values(stats.daily || {}).reduce((a, s) => a + (Number(s) || 0), 0);
+  wrap.innerHTML =
+    `<div class="hm-grid" role="img" aria-label="Lernzeit-Heatmap des letzten Jahres">${cells}</div>
+     <div class="hm-legend"><span class="muted">weniger</span>
+       <span class="hm-cell hm-l0"></span><span class="hm-cell hm-l1"></span><span class="hm-cell hm-l2"></span><span class="hm-cell hm-l3"></span><span class="hm-cell hm-l4"></span>
+       <span class="muted">mehr</span></div>`;
 }
 
 /* Hinweis: gradeForecast() und gradeRange() bleiben erhalten — sie werden
@@ -3193,6 +3275,47 @@ function buildPrintWeek() {
     <table class="pv-table pv-week"><tbody>${rows}</tbody></table>`;
 }
 
+// Druckbarer Monatsüberblick (der aktuell im Kalender gewählte Monat) als
+// 7-Spalten-Raster mit kompakten Tageszellen. Zeigt Titel der Posten (gekürzt).
+function buildPrintMonth() {
+  const y = (typeof calYear === "number") ? calYear : new Date().getFullYear();
+  const mo = (typeof calMonth === "number") ? calMonth : new Date().getMonth();
+  const first = new Date(y, mo, 1);
+  const startOff = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(y, mo + 1, 0).getDate();
+  const WD = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+  let cells = "";
+  for (let i = 0; i < startOff; i++) cells += `<td class="pv-mo-empty"></td>`;
+  let col = startOff;
+  let any = false;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${y}-${String(mo + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const posts = [];
+    eventsOnDate(iso).forEach((e) => posts.push(e.title));
+    tasksOnDate(iso).forEach(({ module, task }) => posts.push(task.text));
+    if (posts.length) any = true;
+    const items = posts.slice(0, 3).map((p) => `<div class="pv-mo-item">${escapeHtml(p)}</div>`).join("")
+      + (posts.length > 3 ? `<div class="pv-mo-more">+${posts.length - 3}</div>` : "");
+    cells += `<td class="pv-mo-cell"><span class="pv-mo-num">${day}</span>${items}</td>`;
+    col++;
+    if (col === 7) { col = 0; cells = cells; } // Zeilen bildet die Tabelle via colgroup-freier Umbruch
+  }
+  if (!any) return "";
+  // In 7er-Zeilen gruppieren.
+  // (Wir bauen die <tr> aus den gesammelten <td> neu, 7 pro Reihe.)
+  const tmp = document.createElement("tbody");
+  tmp.innerHTML = cells;
+  const tds = Array.from(tmp.children);
+  let rows = "";
+  for (let i = 0; i < tds.length; i += 7) {
+    rows += "<tr>" + tds.slice(i, i + 7).map((td) => td.outerHTML).join("") + "</tr>";
+  }
+  const MONTHS_L = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+  return `<h2>Monatsüberblick ${MONTHS_L[mo]} ${y}</h2>
+    <table class="pv-table pv-month"><thead><tr>${WD.map((w) => `<th>${w}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
 function buildPrintView() {
   const pv = document.getElementById("print-view");
   if (!pv) return;
@@ -3249,7 +3372,8 @@ function buildPrintView() {
       </tbody></table>`;
   }
 
-  // Wochenplan der aktuellen (ausgewählten) Woche — druckfreundliche Tabelle.
+  // Monatsüberblick + Wochenplan — druckfreundliche Tabellen.
+  html += buildPrintMonth();
   html += buildPrintWeek();
 
   // Lernzeit & Serie
@@ -3572,6 +3696,8 @@ function applyRemote(doc) {
     fillGoalInputs();
     fillEctsTarget();
     fillWeekGridInputs();
+    fillRadioSettings();
+    renderRadioPlayer();
     renderAll();
   } finally {
     syncApplying = false;
@@ -3713,13 +3839,164 @@ async function initSync() {
 }
 
 // Login per Magic Link
+/* ============================================================
+   FOKUS-RADIO (kompakter Player im Pomodoro)
+   Spielt einen hinterlegten Internet-Radio-Stream per <audio>. Stream-URL &
+   Lautstärke stehen in state.radio (synct mit). Keine Hintergrund-Wiedergabe
+   auf iOS bei gesperrtem Bildschirm — das kann eine Web-App nicht leisten.
+   ============================================================ */
+// Vorschläge: nur Sender mit (nach bestem Wissen) stabilem Direkt-Stream.
+// Lofi-Streams wechseln oft ihre Endpunkte → besser eigene URL eintragen.
+const RADIO_PRESETS = [
+  { label: "Deutschlandfunk", url: "https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3" },
+];
+function fillRadioSettings() {
+  const presetSel = document.getElementById("radio-preset");
+  const urlInput = document.getElementById("radio-url");
+  if (presetSel) {
+    presetSel.innerHTML = `<option value="">— eigene URL —</option>` +
+      RADIO_PRESETS.map((p) => `<option value="${escapeHtml(p.url)}">${escapeHtml(p.label)}</option>`).join("");
+    const cur = (state.radio && state.radio.url) || "";
+    presetSel.value = RADIO_PRESETS.some((p) => p.url === cur) ? cur : "";
+  }
+  if (urlInput) urlInput.value = (state.radio && state.radio.url) || "";
+}
+const radioPresetSel = document.getElementById("radio-preset");
+if (radioPresetSel) radioPresetSel.addEventListener("change", (e) => {
+  const u = e.target.value;
+  const urlInput = document.getElementById("radio-url");
+  if (u && urlInput) urlInput.value = u;
+});
+const radioForm = document.getElementById("radio-form");
+if (radioForm) radioForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const raw = document.getElementById("radio-url").value;
+  const clean = sanitizeUrl(raw);
+  const status = document.getElementById("radio-status");
+  if (raw.trim() && !clean) { if (status) status.textContent = "Ungültige Stream-URL — bitte eine gültige http(s)-Adresse."; return; }
+  const presetSel = document.getElementById("radio-preset");
+  const label = (presetSel && presetSel.selectedOptions[0] && presetSel.value) ? presetSel.selectedOptions[0].textContent : "";
+  state.radio = { url: clean || "", label, volume: (state.radio && state.radio.volume) || 0.6 };
+  saveState();
+  renderRadioPlayer();
+  if (status) status.textContent = clean ? "Gespeichert." : "Kein Sender gesetzt.";
+});
+const radioClearBtn = document.getElementById("radio-clear");
+if (radioClearBtn) radioClearBtn.addEventListener("click", () => {
+  state.radio = { url: "", label: "", volume: (state.radio && state.radio.volume) || 0.6 };
+  saveState();
+  const u = document.getElementById("radio-url"); if (u) u.value = "";
+  const p = document.getElementById("radio-preset"); if (p) p.value = "";
+  renderRadioPlayer();
+  const status = document.getElementById("radio-status"); if (status) status.textContent = "Sender entfernt.";
+});
+
+// Player im Pomodoro aufbauen/aktualisieren.
+function renderRadioPlayer() {
+  const box = document.getElementById("radio-player");
+  const audio = document.getElementById("radio-audio");
+  const label = document.getElementById("radio-label");
+  const vol = document.getElementById("radio-volume");
+  if (!box || !audio) return;
+  const url = (state.radio && state.radio.url) || "";
+  if (!url) { box.hidden = true; audio.pause(); audio.removeAttribute("src"); return; }
+  box.hidden = false;
+  if (label) label.textContent = (state.radio && state.radio.label) || "Fokus-Radio";
+  if (vol) { vol.value = (state.radio && state.radio.volume) != null ? state.radio.volume : 0.6; audio.volume = Number(vol.value); }
+  // Quelle nur neu setzen, wenn sie sich geändert hat (sonst stoppt die Wiedergabe).
+  if (audio.dataset.src !== url) { audio.src = url; audio.dataset.src = url; }
+}
+const radioToggle = document.getElementById("radio-toggle");
+const radioAudio = document.getElementById("radio-audio");
+if (radioToggle && radioAudio) {
+  radioToggle.addEventListener("click", () => {
+    if (radioAudio.paused) {
+      radioAudio.play().then(() => { radioToggle.textContent = "⏸"; radioToggle.title = "Pause"; })
+        .catch(() => { const s = document.getElementById("radio-status"); showSnackbar("Stream konnte nicht gestartet werden (URL erreichbar?)."); });
+    } else {
+      radioAudio.pause(); radioToggle.textContent = "▶"; radioToggle.title = "Wiedergabe";
+    }
+  });
+  radioAudio.addEventListener("pause", () => { radioToggle.textContent = "▶"; });
+  radioAudio.addEventListener("play", () => { radioToggle.textContent = "⏸"; });
+}
+const radioVol = document.getElementById("radio-volume");
+if (radioVol && radioAudio) {
+  radioVol.addEventListener("input", (e) => {
+    const v = Number(e.target.value);
+    radioAudio.volume = v;
+    if (state.radio) { state.radio.volume = v; saveState(); }
+  });
+}
+
+// Login per E-Mail + Passwort (primär — kein Mail-Zugriff nötig).
+const syncPwForm = document.getElementById("sync-pw-form");
+if (syncPwForm) {
+  // „Anmelden" (bestehendes Konto).
+  syncPwForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!syncConfigured()) { renderSyncUI(); return; }
+    const email = document.getElementById("sync-email").value.trim();
+    const password = document.getElementById("sync-password").value;
+    if (!email || !password) return;
+    const btn = syncPwForm.querySelector("button[type=submit]");
+    try {
+      if (btn) btn.disabled = true;
+      setSyncStatus("Anmeldung läuft …");
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      // onAuthStateChange übernimmt renderSyncUI + pullAndMerge.
+    } catch (e2) {
+      const msg = (e2 && (e2.message || e2.error_description)) || String(e2);
+      if (/invalid login|invalid_credentials|credentials/i.test(msg)) {
+        setSyncStatus("E-Mail oder Passwort falsch. Noch kein Konto? Auf „Registrieren“ tippen.");
+      } else {
+        setSyncStatus("Anmeldung fehlgeschlagen: " + msg);
+      }
+    } finally {
+      if (btn) setTimeout(() => { btn.disabled = false; }, 1500);
+    }
+  });
+  // „Registrieren" (neues Konto mit Passwort anlegen).
+  const regBtn = document.getElementById("sync-register-btn");
+  if (regBtn) regBtn.addEventListener("click", async () => {
+    if (!syncConfigured()) { renderSyncUI(); return; }
+    const email = document.getElementById("sync-email").value.trim();
+    const password = document.getElementById("sync-password").value;
+    if (!email || !password) { setSyncStatus("Bitte E-Mail und ein Passwort (min. 6 Zeichen) eingeben."); return; }
+    if (password.length < 6) { setSyncStatus("Das Passwort muss mindestens 6 Zeichen haben."); return; }
+    try {
+      regBtn.disabled = true;
+      setSyncStatus("Konto wird erstellt …");
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      // Je nach Supabase-Einstellung: sofort angemeldet ODER Bestätigungsmail nötig.
+      if (data && data.session) {
+        setSyncStatus("Konto erstellt und angemeldet.");
+      } else {
+        setSyncStatus("Konto erstellt. Falls eine Bestätigungsmail kommt: einmal bestätigen, danach meldest du dich künftig direkt mit E-Mail + Passwort an.");
+      }
+    } catch (e2) {
+      const msg = (e2 && (e2.message || e2.error_description)) || String(e2);
+      if (/already registered|already exists|user_already/i.test(msg)) {
+        setSyncStatus("Für diese E-Mail gibt es schon ein Konto — bitte einfach „Anmelden“.");
+      } else {
+        setSyncStatus("Registrierung fehlgeschlagen: " + msg);
+      }
+    } finally {
+      setTimeout(() => { regBtn.disabled = false; }, 1500);
+    }
+  });
+}
+
+// Login per Magic Link (Alternative).
 const syncLoginForm = document.getElementById("sync-login-form");
 let loginCooldownUntil = 0; // verhindert zu häufiges Anfordern (Rate-Limit vorbeugen)
 if (syncLoginForm) {
   syncLoginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!syncConfigured()) { renderSyncUI(); return; }
-    const email = document.getElementById("sync-email").value.trim();
+    const email = document.getElementById("sync-magic-email").value.trim();
     if (!email) return;
 
     // Lokale Sperre: höchstens alle 60 s einen Link anfordern.
@@ -3919,6 +4196,8 @@ fillPomoModuleSelect();      // Modul-Auswahl beim Timer (Punkt 6)
 fillGoalInputs();            // Lernzeit-Ziele (Punkt 10)
 fillEctsTarget();            // Studienziel (ECTS)
 fillWeekGridInputs();        // Wochenraster-Einstellungen
+fillRadioSettings();         // Fokus-Radio (Einstellungen)
+renderRadioPlayer();         // Fokus-Radio (Player im Pomodoro)
 fillCreateSemester();        // Semester-Dropdown im „Modul hinzufügen“-Formular
 fillEntryModuleSelect();     // Modul-Auswahl im vereinheitlichten Hinzufügen-Formular
 updateEntryFormMode();       // Felder je nach Art (Aufgabe/Prüfung) ein-/ausblenden
@@ -3944,7 +4223,7 @@ if (typeof module !== "undefined" && module.exports) {
     migrate, SCHEMA_VERSION, syncDecision, gradesBySemester, dayMatchesQuery,
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
-    itemSpan, layoutOverlaps, makeTask,
+    itemSpan, layoutOverlaps, makeTask, buildHeatmap, nextModuleDue, dueStatusAt,
   };
 }
 

@@ -3849,6 +3849,7 @@ async function initSync() {
 // Lofi-Streams wechseln oft ihre Endpunkte → besser eigene URL eintragen.
 const RADIO_PRESETS = [
   { label: "Deutschlandfunk", url: "https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3" },
+  { label: "Lofi (laut.fm)", url: "https://stream.laut.fm/lofi" },
 ];
 function fillRadioSettings() {
   const presetSel = document.getElementById("radio-preset");

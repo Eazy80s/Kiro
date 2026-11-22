@@ -369,6 +369,100 @@ eq(api.migrate({ dashCols: 5 }).dashCols, 1, "migrate: ungültige dashCols → 1
   eq(api.migrate({}).radio, { url: "", label: "", volume: 0.6 }, "migrate: Radio-Default");
 }
 
+/* ---- Wiederkehrende Aufgaben (#4): Serie + Pro-Vorkommen-Status ---- */
+{
+  // makeTask härtet die neuen Felder.
+  const t = api.makeTask({ text: "Übung", date: "2026-11-23", repeat: "weekly", repeatUntil: "2026-12-31" });
+  eq([t.repeat, t.repeatUntil], ["weekly", "2026-12-31"], "makeTask: repeat/repeatUntil übernommen");
+  eq(Array.isArray(t.doneDates) && t.doneDates.length === 0, true, "makeTask: doneDates leer");
+  eq(api.makeTask({ text: "X", date: "2026-11-23", repeat: "bogus" }).repeat, null, "makeTask: ungültiges repeat → null");
+
+  // normalizeRepeat
+  eq([api.normalizeRepeat("weekly"), api.normalizeRepeat("monthly"), api.normalizeRepeat("x"), api.normalizeRepeat(null)],
+     ["weekly", "monthly", null, null], "normalizeRepeat: nur erlaubte Muster");
+
+  // taskOccursOn nutzt dieselben Regeln wie Events.
+  const weekly = { date: "2026-11-23", repeat: "weekly", repeatUntil: null, doneDates: [] }; // Mo
+  eq(api.taskOccursOn(weekly, "2026-11-23"), true, "taskOccursOn: Starttag");
+  eq(api.taskOccursOn(weekly, "2026-11-30"), true, "taskOccursOn: +7 Tage (gleicher Wochentag)");
+  eq(api.taskOccursOn(weekly, "2026-11-24"), false, "taskOccursOn: Dienstag nein");
+  eq(api.taskOccursOn({ date: null, repeat: "weekly" }, "2026-11-23"), false, "taskOccursOn: ohne Datum nie");
+
+  // nextTaskOccurrence ab fromIso.
+  eq(api.nextTaskOccurrence(weekly, "2026-11-24"), "2026-11-30", "nextTaskOccurrence: nächster Montag");
+  eq(api.nextTaskOccurrence({ date: "2026-11-23", repeat: null }, "2026-11-24"), null, "nextTaskOccurrence: einmalig, vergangen → null");
+
+  // isTaskOccurrenceDone: einmalig über done, Serie über doneDates.
+  eq(api.isTaskOccurrenceDone({ repeat: null, done: true }, "2026-11-23"), true, "isTaskOccurrenceDone: einmalig done");
+  eq(api.isTaskOccurrenceDone({ repeat: "weekly", doneDates: ["2026-11-23"] }, "2026-11-23"), true, "isTaskOccurrenceDone: Serie, Vorkommen erledigt");
+  eq(api.isTaskOccurrenceDone({ repeat: "weekly", doneDates: ["2026-11-23"] }, "2026-11-30"), false, "isTaskOccurrenceDone: anderes Vorkommen offen");
+
+  // setTaskOccurrenceDone mutiert korrekt.
+  const s1 = { repeat: "weekly", doneDates: [] };
+  api.setTaskOccurrenceDone(s1, "2026-11-23", true);
+  eq(s1.doneDates, ["2026-11-23"], "setTaskOccurrenceDone: Vorkommen eintragen");
+  api.setTaskOccurrenceDone(s1, "2026-11-23", false);
+  eq(s1.doneDates, [], "setTaskOccurrenceDone: Vorkommen entfernen");
+  const o1 = { repeat: null, done: false };
+  api.setTaskOccurrenceDone(o1, "2026-11-23", true);
+  eq(o1.done, true, "setTaskOccurrenceDone: einmalige Aufgabe setzt done");
+
+  // currentTaskOccurrence: maßgebliches Vorkommen ab heute.
+  eq(api.currentTaskOccurrence(weekly, "2026-11-24"), { date: "2026-11-30", done: false }, "currentTaskOccurrence: nächstes offenes Vorkommen");
+  eq(api.currentTaskOccurrence({ date: "2026-11-23", repeat: null, done: false }, "2026-11-24"), { date: "2026-11-23", done: false }, "currentTaskOccurrence: einmalig → eigenes Datum");
+  eq(api.currentTaskOccurrence({ date: "2026-11-23", repeat: "weekly", repeatUntil: "2026-11-25", doneDates: [] }, "2026-12-01"), null, "currentTaskOccurrence: abgelaufene Serie → null");
+
+  // taskCompletion (explizites „heute" → deterministisch): Serie zählt das nächste Vorkommen.
+  eq(api.taskCompletion({ repeat: "weekly", date: "2026-11-23", doneDates: [], subtasks: [] }, "2026-11-24"), 0, "taskCompletion: Serie, nächstes Vorkommen offen → 0");
+  eq(api.taskCompletion({ repeat: "weekly", date: "2026-11-23", doneDates: ["2026-11-30"], subtasks: [] }, "2026-11-24"), 1, "taskCompletion: Serie, nächstes Vorkommen erledigt → 1");
+  eq(api.taskCompletion({ repeat: "weekly", date: "2026-11-23", repeatUntil: "2026-11-25", doneDates: [], subtasks: [] }, "2026-12-01"), 1, "taskCompletion: abgelaufene Serie → 1 (erledigt)");
+  eq(api.taskCompletion({ repeat: null, done: true, subtasks: [] }, "2026-11-24"), 1, "taskCompletion: einmalig done → 1");
+}
+
+/* ---- migrate v10: Aufgaben-Wiederholung additiv + gehärtet ---- */
+{
+  const d = api.migrate({
+    schemaVersion: 9,
+    modules: [{ id: "m", name: "M", ects: 5, tasks: [
+      // Gültige Serie + gemischte doneDates (ungültige/doppelte werden entfernt)
+      { id: "t1", text: "Wöchentlich", date: "2026-11-23", repeat: "weekly", repeatUntil: "2026-12-31",
+        doneDates: ["2026-11-23", "2026-11-23", "kaputt", 42] },
+      // repeat ohne Datum → Serienfelder müssen zurückgesetzt werden
+      { id: "t2", text: "Ohne Datum", date: null, repeat: "daily", repeatUntil: "2026-12-01", doneDates: ["2026-11-01"] },
+      // ungültiges repeat → null; doneDates nur für Serien → geleert
+      { id: "t3", text: "Krumm", date: "2026-11-24", repeat: "bogus", doneDates: ["2026-11-24"] },
+    ] }],
+  });
+  const [t1, t2, t3] = d.modules[0].tasks;
+  eq([t1.repeat, t1.repeatUntil], ["weekly", "2026-12-31"], "migrate v10: gültige Serie bleibt");
+  eq(t1.doneDates, ["2026-11-23"], "migrate v10: doneDates dedupliziert + bereinigt");
+  eq([t2.repeat, t2.repeatUntil, t2.doneDates.length], [null, null, 0], "migrate v10: repeat ohne Datum → zurückgesetzt");
+  eq([t3.repeat, t3.doneDates.length], [null, 0], "migrate v10: ungültiges repeat → null, doneDates geleert");
+  // Bestandsaufgaben ohne die neuen Felder bekommen saubere Defaults.
+  const d2 = api.migrate({ modules: [{ id: "m", name: "M", ects: 3, tasks: [{ id: "x", text: "Alt", date: "2026-11-23" }] }] });
+  const tx = d2.modules[0].tasks[0];
+  eq([tx.repeat, tx.repeatUntil, Array.isArray(tx.doneDates)], [null, null, true], "migrate v10: Alt-Aufgabe additiv gedefaultet");
+}
+
+/* ---- nextModuleDue mit wiederkehrenden Aufgaben ---- */
+{
+  const mod = { tasks: [
+    { text: "Serie Mo", date: "2026-11-23", repeat: "weekly", doneDates: [] },  // nächstes ab Di 24. → Mo 30.
+    { text: "Einmalig Do", date: "2026-11-26", done: false, repeat: null },      // 26. < 30. → gewinnt
+  ]};
+  eq(api.nextModuleDue(mod, "2026-11-24").date, "2026-11-26", "nextModuleDue: früheste über einmalig + Serie");
+  // Serie, deren maßgebliches (nächstes) Vorkommen offen ist → dieses Datum zählt.
+  const mod2 = { tasks: [
+    { text: "Serie offen", date: "2026-11-23", repeat: "weekly", doneDates: [] },
+  ]};
+  eq(api.nextModuleDue(mod2, "2026-11-24").date, "2026-11-30", "nextModuleDue: Serie, nächstes offenes Vorkommen");
+  // Serie, deren maßgebliches Vorkommen bereits erledigt ist → nicht fällig.
+  const mod3 = { tasks: [
+    { text: "Serie erledigt", date: "2026-11-23", repeat: "weekly", doneDates: ["2026-11-30"] },
+  ]};
+  eq(api.nextModuleDue(mod3, "2026-11-24"), null, "nextModuleDue: Serie mit erledigtem nächsten Vorkommen → null");
+}
+
 /* ---- dueSoonSummary: In-App-Fälligkeits-Hinweis beim Öffnen (#6) ----
    Bündelt überfällige + heute/morgen fällige Prüfungen, Abgaben und Aufgaben.
    Signatur: dueSoonSummary(events, modules, todayStr). */
@@ -405,6 +499,18 @@ const dss = api.dueSoonSummary;
   // 2026-11-15 war ein Sonntag → nächstes Vorkommen am 2026-11-22 (heute).
   eq([s.total, s.today], [1, 1], "dueSoonSummary: wiederkehrende Prüfung über nächstes Vorkommen");
   eq(s.items[0].when, "today", "dueSoonSummary: Wiederholung heute fällig");
+}
+{
+  // Wiederkehrende Aufgabe: zählt über ihr nächstes offenes Vorkommen.
+  const modules = [{ tasks: [
+    // wöchentlich ab Mo 2026-11-16; heute ist 2026-11-23 (Mo) → Vorkommen heute, offen.
+    { text: "Wöchentliche Übung", date: "2026-11-16", repeat: "weekly", doneDates: [] },
+    // dieselbe, aber heutiges Vorkommen schon erledigt → nicht melden.
+    { text: "Schon erledigt heute", date: "2026-11-16", repeat: "weekly", doneDates: ["2026-11-23"] },
+  ] }];
+  const s = dss([], modules, "2026-11-23");
+  eq([s.total, s.today], [1, 1], "dueSoonSummary: wiederkehrende Aufgabe über nächstes offenes Vorkommen");
+  eq(s.items[0].kind, "task", "dueSoonSummary: wiederkehrende Aufgabe als task");
 }
 eq(dss([], [], "2026-11-22").total, 0, "dueSoonSummary: nichts fällig → leer");
 eq(dss(null, null, "2026-11-22").total, 0, "dueSoonSummary: defensiv bei null-Eingaben");

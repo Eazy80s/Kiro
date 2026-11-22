@@ -359,7 +359,11 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
   background: var(--surface-2); border-radius: 8px;
 }
 .task-opts .task-opt { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
-.task-opts .task-opt input[type="time"] { padding: 4px 6px; font-size: 0.82rem; }
+.task-opts .task-opt input[type="time"],
+.task-opts .task-opt input[type="date"],
+.task-opts .task-opt select { padding: 4px 6px; font-size: 0.82rem; }
+.task-opts .task-opt select:disabled,
+.task-opts .task-opt input:disabled { opacity: 0.5; cursor: not-allowed; }
 .task-opts .task-opt-url { flex: 1 1 220px; }
 .task-opts .task-opt-url input { flex: 1; min-width: 0; padding: 5px 9px; font-size: 0.82rem; }
 
@@ -637,8 +641,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
   border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; font-family: inherit;
 }
 
-/* Wiederholungs-Kennzeichnung (Punkt 5) */
-.repeat-badge { font-size: 0.72rem; color: var(--muted); }
+/* Wiederholungs-Kennzeichnung (Punkt 5 + wiederkehrende Aufgaben #4) */
+.repeat-badge { font-size: 0.72rem; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.repeat-badge .ic { width: 0.95em; height: 0.95em; }
 
 /* Theme-Umschalter (Punkt 9) */
 .theme-switch { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }

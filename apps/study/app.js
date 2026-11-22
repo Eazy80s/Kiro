@@ -1,12 +1,15 @@
 /* ============================================================
    Studien-Tracker — Daten im localStorage
-   Datenmodell (v7):
+   Datenmodell (v10):
      module:   { id, name, ects, grade, targetGrade, semester, completed, pinned,
                  collapsed, gradeComponents:[comp], links:[link], tasks:[task] }
      comp:     { id, label, grade, weight }        // Teilnote (gewichtet)
      link:     { id, label, url }                  // url immer http(s) (sanitizeUrl)
-     task:     { id, text, done, date, startTime, endTime, url, subtasks:[subtask] }
+     task:     { id, text, done, date, startTime, endTime, url,
+                 repeat, repeatUntil, doneDates:[iso], subtasks:[subtask] }
                  // startTime/endTime: "HH:MM" oder null; url: http(s) oder ""
+                 // repeat: null|"daily"|"weekly"|"biweekly"|"monthly" (nur mit date);
+                 // doneDates: erledigte Vorkommen (nur für Serien; sonst zählt done)
      subtask:  { id, text, done }
      event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color, url }
                  // type: "exam" | "deadline" | "other"; color: null oder Hex (sanitizeHexColor);
@@ -30,7 +33,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 let state = loadState();
 
@@ -160,6 +163,19 @@ function migrate(data) {
       // Optionaler eigener Link (z. B. zur Plattform-Aufzeichnung). Immer
       // härten: nur http(s) (schützt Import/Sync), sonst leer.
       t.url = sanitizeUrl(t.url) || "";
+      // Wiederkehrende Aufgaben (v10): repeat/repeatUntil/doneDates. Additiv +
+      // gehärtet (gilt auch für Import/Sync). Ohne Datum ergibt Wiederholung
+      // keinen Sinn → dann repeat/Serienfelder zurücksetzen.
+      if (t.repeat === undefined) t.repeat = null;
+      t.repeat = normalizeRepeat(t.repeat);
+      if (t.repeatUntil === undefined) t.repeatUntil = null;
+      if (!Array.isArray(t.doneDates)) t.doneDates = [];
+      // Nur gültige, eindeutige ISO-Tagesdaten behalten.
+      t.doneDates = Array.from(new Set(
+        t.doneDates.filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d))
+      ));
+      if (!t.date) { t.repeat = null; t.repeatUntil = null; t.doneDates = []; }
+      if (!t.repeat) { t.repeatUntil = null; t.doneDates = []; } // doneDates nur für Serien
       // Entfernte Felder aufräumen (v9): kind (Vorlesungs-Typ) und pinned (ungenutzt).
       delete t.kind;
       delete t.pinned;
@@ -202,18 +218,40 @@ function makeTask(fields) {
     startTime: normalizeTime(f.startTime),
     endTime: normalizeTime(f.endTime),
     url: sanitizeUrl(f.url) || "",
+    // Wiederkehrende Aufgaben (#4): Serie mit Pro-Vorkommen-Status.
+    //   repeat:      null | "daily" | "weekly" | "biweekly" | "monthly"
+    //   repeatUntil: optionales Serienende ("YYYY-MM-DD" oder null)
+    //   doneDates:   Menge erledigter Vorkommen-Daten (["YYYY-MM-DD", …]).
+    // Für Serien steuert doneDates den Status je Vorkommen; `done` wird nur bei
+    // einmaligen Aufgaben (repeat === null) verwendet.
+    repeat: normalizeRepeat(f.repeat),
+    repeatUntil: f.repeatUntil || null,
+    doneDates: [],
     subtasks: [],
   };
+}
+
+// Erlaubte Wiederholungsmuster (geteilt von Events und Aufgaben). Alles andere → null.
+function normalizeRepeat(raw) {
+  return (raw === "daily" || raw === "weekly" || raw === "biweekly" || raw === "monthly") ? raw : null;
 }
 
 /* ---------- Progress helpers ---------- */
 // A task with subtasks contributes fractionally (share of its subtasks done);
 // a task without subtasks contributes 1 when done, 0 otherwise. The module
 // percentage is the average completion across all its tasks.
-function taskCompletion(t) {
+// `todayStr` steuert, welches Vorkommen einer wiederkehrenden Aufgabe zählt
+// (das nächste fällige ab heute). Default = heute; als Argument → testbar.
+function taskCompletion(t, todayStr) {
   if (t.subtasks && t.subtasks.length) {
     const done = t.subtasks.filter((s) => s.done).length;
     return done / t.subtasks.length;
+  }
+  // Wiederkehrende Aufgabe: das nächste fällige Vorkommen entscheidet. Ist die
+  // Serie abgelaufen (kein Vorkommen mehr), gilt sie als erledigt (1).
+  if (t.repeat) {
+    const occ = currentTaskOccurrence(t, todayStr || todayIso());
+    return !occ || occ.done ? 1 : 0;
   }
   return t.done ? 1 : 0;
 }
@@ -221,7 +259,8 @@ function taskCompletion(t) {
 function moduleProgress(module) {
   if (module.completed) return 100;
   if (!module.tasks.length) return 0;
-  const sum = module.tasks.reduce((a, t) => a + taskCompletion(t), 0);
+  const today = todayIso();
+  const sum = module.tasks.reduce((a, t) => a + taskCompletion(t, today), 0);
   return Math.round((sum / module.tasks.length) * 100);
 }
 
@@ -316,13 +355,18 @@ function daysBetween(aIso, bIso) {
   return Math.round((b - a) / 86400000);
 }
 
-// All module tasks scheduled on a given date, as { module, task } pairs.
-// Includes recurring calendar events expanded onto `dateStr` is handled elsewhere;
-// this only covers module tasks.
+// All module tasks occurring on a given date, as { module, task, occ, done }.
+// Expands recurring tasks (#4): `occ` is the concrete occurrence date (== dateStr)
+// and `done` is that occurrence's status (doneDates for series, else t.done).
+// Calendar events are handled separately (eventsOnDate).
 function tasksOnDate(dateStr) {
   const out = [];
   state.modules.forEach((m) => {
-    m.tasks.forEach((t) => { if (t.date === dateStr) out.push({ module: m, task: t }); });
+    m.tasks.forEach((t) => {
+      if (taskOccursOn(t, dateStr)) {
+        out.push({ module: m, task: t, occ: dateStr, done: isTaskOccurrenceDone(t, dateStr) });
+      }
+    });
   });
   return out;
 }
@@ -408,6 +452,59 @@ function nextOccurrence(e, fromIso) {
   return null;
 }
 
+/* ---------- Wiederkehrende Aufgaben (#4) ----------
+   Aufgaben nutzen dieselben Wiederholungsregeln wie Termine (date/repeat/
+   repeatUntil), daher werden eventOccursOn/nextOccurrence direkt
+   wiederverwendet (kein zweites Regelwerk). Zusätzlich hat eine Aufgabe einen
+   Status PRO Vorkommen über doneDates (Modell b): Das hält den Datensatz
+   kompakt (nichts „wächst"), ist sync-freundlich (Zustand ändert sich nur beim
+   Abhaken, nicht durch bloßes Öffnen) und bildet trotzdem „Montag erledigt,
+   Dienstag offen" ab. Alle Funktionen sind rein → testbar. */
+
+// Fällt die (ggf. wiederkehrende) Aufgabe auf dateStr? Ohne Datum: nie.
+function taskOccursOn(t, dateStr) {
+  if (!t || !t.date) return false;
+  return eventOccursOn(t, dateStr);
+}
+
+// Nächstes Vorkommen einer Aufgabe ab fromIso (oder null). Ohne Datum: null.
+function nextTaskOccurrence(t, fromIso) {
+  if (!t || !t.date) return null;
+  return nextOccurrence(t, fromIso);
+}
+
+// Ist ein konkretes Vorkommen (an iso) erledigt?
+//  - einmalige Aufgabe (repeat === null): klassisches t.done.
+//  - Serie: iso steht in doneDates.
+function isTaskOccurrenceDone(t, iso) {
+  if (!t) return false;
+  if (!t.repeat) return !!t.done;
+  return Array.isArray(t.doneDates) && t.doneDates.indexOf(iso) !== -1;
+}
+
+// Erledigt-Status eines Vorkommens setzen/löschen (mutiert die Aufgabe).
+//  - einmalige Aufgabe: setzt t.done.
+//  - Serie: fügt iso in doneDates ein bzw. entfernt es.
+function setTaskOccurrenceDone(t, iso, done) {
+  if (!t) return;
+  if (!t.repeat) { t.done = !!done; return; }
+  if (!Array.isArray(t.doneDates)) t.doneDates = [];
+  const i = t.doneDates.indexOf(iso);
+  if (done && i === -1) t.doneDates.push(iso);
+  else if (!done && i !== -1) t.doneDates.splice(i, 1);
+}
+
+// Für Dashboard/Fortschritt: ist die Aufgabe „aktuell offen" bezogen auf heute?
+// Einmalig: !done. Serie: das nächste Vorkommen ab heute ist nicht erledigt.
+// Rückgabe: { date, done } des maßgeblichen Vorkommens oder null (keins mehr).
+function currentTaskOccurrence(t, todayStr) {
+  if (!t || !t.date) return null;
+  if (!t.repeat) return { date: t.date, done: !!t.done };
+  const next = nextTaskOccurrence(t, todayStr);
+  if (!next) return null; // Serie abgelaufen
+  return { date: next, done: isTaskOccurrenceDone(t, next) };
+}
+
 /* ---------- German grade helpers (scale 1.0–5.0; passed if ≤ 4.0) ---------- */
 function isPassingGrade(g) { return typeof g === "number" && g <= 4.0; }
 function gradeLabel(g) {
@@ -481,11 +578,17 @@ function dueStatus(dateStr) {
 // Nächste anstehende (offene, terminierte) Aufgabe eines Moduls ab heute.
 // Rückgabe: { date, status } oder null. Reine Funktion → testbar.
 function nextModuleDue(module, todayStr) {
-  const open = (module.tasks || [])
-    .filter((t) => !t.done && t.date && t.date >= todayStr)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  if (!open.length) return null;
-  return { date: open[0].date, status: dueStatusAt(open[0].date, todayStr) };
+  // Je Aufgabe das nächste offene Vorkommen ab heute bestimmen (deckt einmalige
+  // und wiederkehrende Aufgaben ab), dann das früheste über alle Aufgaben wählen.
+  const dates = [];
+  (module.tasks || []).forEach((t) => {
+    if (!t.date) return;
+    const occ = currentTaskOccurrence(t, todayStr);
+    if (occ && !occ.done && occ.date >= todayStr) dates.push(occ.date);
+  });
+  if (!dates.length) return null;
+  dates.sort((a, b) => a.localeCompare(b));
+  return { date: dates[0], status: dueStatusAt(dates[0], todayStr) };
 }
 // Wie dueStatus, aber mit explizitem „heute" (testbar, ohne globale Zeit).
 function dueStatusAt(dateStr, todayStr) {
@@ -498,14 +601,23 @@ function dueStatusAt(dateStr, todayStr) {
 }
 
 // Alle offenen, terminierten Aufgaben mit Fälligkeitsinfo (für Dashboard-Sektion).
+// Für wiederkehrende Aufgaben zählt das maßgebliche (nächste offene) Vorkommen;
+// `occ` ist dessen Datum. Überfällige einmalige Aufgaben bleiben überfällig.
 function tasksByDue() {
   const out = [];
+  const today = todayIso();
   state.modules.forEach((m) => {
     m.tasks.forEach((t) => {
-      if (t.date && !t.done) out.push({ module: m, task: t, status: dueStatus(t.date) });
+      if (!t.date) return;
+      if (t.repeat) {
+        const occ = currentTaskOccurrence(t, today);
+        if (occ && !occ.done) out.push({ module: m, task: t, occ: occ.date, status: dueStatus(occ.date) });
+      } else if (!t.done) {
+        out.push({ module: m, task: t, occ: t.date, status: dueStatus(t.date) });
+      }
     });
   });
-  return out.sort((a, b) => a.task.date.localeCompare(b.task.date));
+  return out.sort((a, b) => a.occ.localeCompare(b.occ));
 }
 
 // Fälligkeits-Übersicht für den In-App-Hinweis beim Öffnen (#6). Zuverlässiger
@@ -541,13 +653,24 @@ function dueSoonSummary(events, modules, todayStr) {
     items.push({ kind: e.type, title: e.title || "", date, when: b.when, days: b.days });
   });
 
-  // Offene, terminierte Aufgaben.
+  // Offene, terminierte Aufgaben. Wiederkehrende zählen über ihr nächstes
+  // offenes Vorkommen ab heute (nie „überfällig", sondern heute/morgen).
   (modules || []).forEach((m) => {
     (m.tasks || []).forEach((t) => {
-      if (t.done || !t.date) return;
-      const b = bucket(t.date);
+      if (!t.date) return;
+      let date, b;
+      if (t.repeat) {
+        const occ = currentTaskOccurrence(t, todayStr);
+        if (!occ || occ.done) return;
+        date = occ.date;
+        b = bucket(date);
+      } else {
+        if (t.done) return;
+        date = t.date;
+        b = bucket(date);
+      }
       if (!b) return;
-      items.push({ kind: "task", title: t.text || "", date: t.date, when: b.when, days: b.days });
+      items.push({ kind: "task", title: t.text || "", date, when: b.when, days: b.days });
     });
   });
 
@@ -1016,8 +1139,10 @@ function renderOverdue() {
   if (!wrap) return;
   const today = todayIso();
 
-  // (1) Überfällige, offene Aufgaben (abhakbar).
-  const overdueTasks = tasksByDue().filter((x) => x.task.date < today);
+  // (1) Überfällige, offene Aufgaben (abhakbar). Wiederkehrende Aufgaben haben
+  // nie ein überfälliges „aktuelles" Vorkommen (nächstes Vorkommen ≥ heute),
+  // tauchen hier also korrekt nicht auf.
+  const overdueTasks = tasksByDue().filter((x) => x.occ < today);
   // (2) Überfällige einmalige Prüfungen/Abgaben aus dem Kalender (nicht wiederkehrend).
   const overdueEvents = state.events
     .filter((e) => (e.type === "exam" || e.type === "deadline") && !e.repeat && e.date < today)
@@ -1029,11 +1154,11 @@ function renderOverdue() {
 
   const head = `<h2 class="overdue-head">⚠️ ${count} ${count === 1 ? "Sache braucht" : "Dinge brauchen"} Aufmerksamkeit</h2>`;
 
-  const taskItems = overdueTasks.map(({ module, task, status }) => {
+  const taskItems = overdueTasks.map(({ module, task, status, occ }) => {
     const cbId = `ov-${task.id}`;
     return `<li class="focus-item">
       <div class="focus-main">
-        <input type="checkbox" id="${cbId}" data-overdue-done="${task.id}" />
+        <input type="checkbox" id="${cbId}" data-overdue-done="${task.id}" data-occ="${occ}" />
         <span class="focus-text">${escapeHtml(task.text)}
           <span class="due-badge ${status.cls}">${status.label}</span></span>
         <span class="focus-mod">${escapeHtml(module.name)}</span>
@@ -1057,7 +1182,11 @@ function renderOverdue() {
   wrap.querySelectorAll("[data-overdue-done]").forEach((cb) => {
     cb.addEventListener("change", () => {
       const t = findTaskById(cb.dataset.overdueDone);
-      if (t) { t.done = cb.checked; t.subtasks.forEach((s) => (s.done = cb.checked)); saveState(); renderDashboard(); }
+      if (t) {
+        setTaskOccurrenceDone(t, cb.dataset.occ, cb.checked);
+        t.subtasks.forEach((s) => (s.done = cb.checked));
+        saveState(); renderDashboard();
+      }
     });
   });
 }
@@ -1086,10 +1215,10 @@ function renderPinnedTasks() {
   list.innerHTML = "";
   fillQuickTaskModule();
 
-  // Today's Focus = tasks scheduled for today, grouped per module.
+  // Today's Focus = tasks occurring today (incl. recurring), grouped per module.
   const today = todayIso();
   const groups = state.modules
-    .map((m) => ({ module: m, tasks: m.tasks.filter((t) => t.date === today) }))
+    .map((m) => ({ module: m, tasks: m.tasks.filter((t) => taskOccursOn(t, today)) }))
     .filter((g) => g.tasks.length > 0);
 
   if (!groups.length) {
@@ -1107,7 +1236,9 @@ function renderPinnedTasks() {
       const li = document.createElement("li");
       li.className = "focus-item";
       const cbId = `focus-${task.id}`;
+      const occDone = isTaskOccurrenceDone(task, today);
       const subDone = task.subtasks.filter((s) => s.done).length;
+      const repeatBadge = task.repeat ? ` <span class="repeat-badge" title="${repeatLabel(task.repeat)}">${icon("repeat")}</span>` : "";
       const subLabel = task.subtasks.length ? ` <span class="focus-sub-count">(${subDone}/${task.subtasks.length})</span>` : "";
 
       const tr = timeRange(task.startTime, task.endTime);
@@ -1117,16 +1248,17 @@ function renderPinnedTasks() {
         : "";
       li.innerHTML = `
         <div class="focus-main">
-          <input type="checkbox" id="${cbId}" ${task.done ? "checked" : ""} />
-          <span class="focus-text ${task.done ? "done" : ""}">${escapeHtml(task.text)}${subLabel}</span>
+          <input type="checkbox" id="${cbId}" ${occDone ? "checked" : ""} />
+          <span class="focus-text ${occDone ? "done" : ""}">${escapeHtml(task.text)}${repeatBadge}${subLabel}</span>
           ${timeBadge}
           ${linkChip}
         </div>
         <ul class="focus-subtasks"></ul>`;
 
       // Parent toggle cascades to subtasks (same rule as the Modules view).
+      // Für wiederkehrende Aufgaben betrifft es das heutige Vorkommen (doneDates).
       li.querySelector(`#${CSS.escape(cbId)}`).addEventListener("change", (ev) => {
-        task.done = ev.target.checked;
+        setTaskOccurrenceDone(task, today, ev.target.checked);
         task.subtasks.forEach((s) => { s.done = ev.target.checked; });
         saveState();
         renderDashboard();
@@ -1143,8 +1275,9 @@ function renderPinnedTasks() {
         sli.querySelector("input").addEventListener("change", (ev) => {
           s.done = ev.target.checked;
           // All subtasks done -> complete parent; untick one -> reopen parent.
-          if (task.subtasks.length && task.subtasks.every((x) => x.done)) task.done = true;
-          else if (!ev.target.checked) task.done = false;
+          // (Für Serien betrifft „Parent erledigt" das heutige Vorkommen.)
+          if (task.subtasks.length && task.subtasks.every((x) => x.done)) setTaskOccurrenceDone(task, today, true);
+          else if (!ev.target.checked) setTaskOccurrenceDone(task, today, false);
           saveState();
           renderDashboard();
         });
@@ -1199,6 +1332,10 @@ const MONTHS = ["Januar","Februar","März","April","Mai","Juni",
 // German labels for event types (stored values stay English for compatibility).
 const TYPE_LABELS = { exam: "Prüfung", deadline: "Abgabe", other: "Sonstiges", task: "Aufgabe" };
 function typeLabel(t) { return TYPE_LABELS[t] || t; }
+
+// Lesbares Label für ein Wiederholungsmuster (Aufgaben + Termine).
+const REPEAT_LABELS = { daily: "Täglich", weekly: "Wöchentlich", biweekly: "Alle 2 Wochen", monthly: "Monatlich" };
+function repeatLabel(r) { return REPEAT_LABELS[r] || ""; }
 
 function renderCalendar() {
   if (calYear === undefined) initCalendarState();
@@ -1412,9 +1549,9 @@ function renderWeek() {
       startTime: e.startTime, endTime: e.endTime, color: sanitizeHexColor(e.color),
       repeat: e.repeat, done: false,
     }));
-    tasksOnDate(iso).forEach(({ module, task }) => items.push({
+    tasksOnDate(iso).forEach(({ module, task, done }) => items.push({
       kind: "task", id: task.id, type: "task", title: `${task.text} · ${module.name}`,
-      startTime: task.startTime, endTime: task.endTime, color: null, repeat: null, done: task.done,
+      startTime: task.startTime, endTime: task.endTime, color: null, repeat: task.repeat, done: done,
     }));
     const isMatch = calendarFilter && dayMatchesQuery(eventsOnDate(iso), tasksOnDate(iso), calendarFilter);
     days.push({ iso, d, items, isMatch, isDimmed: calendarFilter && !isMatch });
@@ -1602,28 +1739,32 @@ function renderDayDetail() {
       </div>`;
   });
 
-  // Scheduled module tasks (planned work)
-  dayTasks.forEach(({ module, task }) => {
+  // Scheduled module tasks (planned work). Für wiederkehrende Aufgaben gilt das
+  // Häkchen für DIESES Vorkommen (selectedDate) über doneDates.
+  dayTasks.forEach(({ module, task, done }) => {
     const tr = timeRange(task.startTime, task.endTime);
     const timePart = tr ? `<span class="d-time">${tr} Uhr</span> ` : "";
+    const repPart = task.repeat ? ` <span class="repeat-badge" title="${repeatLabel(task.repeat)}">↻ ${REPEAT_LABELS[task.repeat] || ""}</span>` : "";
     const linkChip = task.url
       ? ` <a class="task-link mod-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(task.url)}">${icon("link")} Öffnen</a>`
       : "";
+    const unplanTitle = task.repeat ? "Serie von allen Tagen entfernen" : "Von diesem Tag entfernen";
     html += `
       <div class="d-event d-task">
         <span class="d-left">
-          <input type="checkbox" data-task-done="${task.id}" ${task.done ? "checked" : ""} />
+          <input type="checkbox" data-task-done="${task.id}" ${done ? "checked" : ""} />
           <span class="tag task">Aufgabe</span>
-          ${timePart}<span class="${task.done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>${linkChip}
+          ${timePart}<span class="${done ? "done" : ""}">${escapeHtml(task.text)} <span class="muted-inline">· ${escapeHtml(module.name)}</span></span>${repPart}${linkChip}
         </span>
-        <button class="del-btn" data-unplan="${task.id}" title="Von diesem Tag entfernen" aria-label="Von diesem Tag entfernen">${icon("close")}</button>
+        <button class="del-btn" data-unplan="${task.id}" title="${unplanTitle}" aria-label="${unplanTitle}">${icon("close")}</button>
       </div>`;
   });
 
-  // "Aufgabe planen" — Auswahl nicht terminierter Aufgaben für diesen Tag.
+  // "Aufgabe planen" — Aufgaben, die an diesem Tag (noch) nicht vorkommen.
+  // Wiederkehrende, die heute ohnehin fällig sind, werden ausgeschlossen.
   const unscheduled = [];
   state.modules.forEach((m) => {
-    m.tasks.forEach((t) => { if (t.date !== selectedDate) unscheduled.push({ m, t }); });
+    m.tasks.forEach((t) => { if (!taskOccursOn(t, selectedDate)) unscheduled.push({ m, t }); });
   });
   if (unscheduled.length) {
     html += `
@@ -1662,23 +1803,28 @@ function renderDayDetail() {
     });
   });
 
-  // Toggle a scheduled task's done state from the calendar
+  // Toggle a scheduled task's done state from the calendar. Bei Serien betrifft
+  // es das angezeigte Vorkommen (selectedDate) über doneDates.
   wrap.querySelectorAll("[data-task-done]").forEach((cb) => {
     cb.addEventListener("change", () => {
       const task = findTaskById(cb.dataset.taskDone);
       if (task) {
-        task.done = cb.checked;
+        setTaskOccurrenceDone(task, selectedDate, cb.checked);
         task.subtasks.forEach((s) => { s.done = cb.checked; });
         saveState(); renderCalendar();
       }
     });
   });
 
-  // Unplan (clear a task's date)
+  // Unplan: einmalige Aufgabe → Datum löschen; Serie → Wiederholung auflösen
+  // (gesamte Serie wird terminlos; migrate setzt die Serienfelder zurück).
   wrap.querySelectorAll("[data-unplan]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const task = findTaskById(btn.dataset.unplan);
-      if (task) { task.date = null; saveState(); renderCalendar(); }
+      if (task) {
+        task.date = null; task.repeat = null; task.repeatUntil = null; task.doneDates = [];
+        saveState(); renderCalendar();
+      }
     });
   });
 
@@ -1837,8 +1983,28 @@ async function moveCalItem(kind, id, fromDate, toDate, toHour) {
   };
   if (kind === "task") {
     const t = findTaskById(id);
-    if (t) { t.date = toDate; applyHour(t); saveState(); renderCalendar();
-      showSnackbar(`Aufgabe auf ${formatDate(toDate)}${toHour != null ? " " + t.startTime + " Uhr" : ""} verschoben.`); }
+    if (!t) return;
+    if (t.repeat) {
+      // Wiederkehrende Aufgabe: ganze Serie um die Differenz verschieben (mit
+      // Rückfrage), inkl. Serienende und der erledigten Vorkommen (doneDates).
+      const delta = daysBetween(t.date, toDate) - daysBetween(t.date, fromDate);
+      const ok = await showConfirm(
+        `„${t.text}“ ist eine wiederkehrende Aufgabe.\n\n` +
+        `Verschieben: ganze Serie um ${delta > 0 ? "+" : ""}${delta} Tag(e).`,
+        { title: "Serie verschieben", okLabel: "Verschieben" }
+      );
+      if (!ok) { renderCalendar(); return; }
+      const shift = (iso) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + delta); return isoOf(d); };
+      t.date = shift(t.date);
+      if (t.repeatUntil) t.repeatUntil = shift(t.repeatUntil);
+      if (Array.isArray(t.doneDates)) t.doneDates = t.doneDates.map(shift);
+      if (toHour != null) applyHour(t);
+      saveState(); renderCalendar();
+      showSnackbar(`Serie „${t.text}“ verschoben.`);
+      return;
+    }
+    t.date = toDate; applyHour(t); saveState(); renderCalendar();
+    showSnackbar(`Aufgabe auf ${formatDate(toDate)}${toHour != null ? " " + t.startTime + " Uhr" : ""} verschoben.`);
     return;
   }
   const e = state.events.find((x) => x.id === id);
@@ -1984,14 +2150,15 @@ function updateEntryFormMode() {
   const isTask = kind === "task";
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
   show("entry-module", isTask);
-  show("entry-repeat", !isTask);
-  show("entry-repeat-until", !isTask);
-  show("entry-color-label", !isTask);
+  // Wiederholung + Serienende gelten jetzt für BEIDE Arten (Aufgaben wie Prüfungen).
+  show("entry-repeat", true);
+  show("entry-repeat-until", true);
+  show("entry-color-label", !isTask); // Farbe nur für Prüfungen
   const title = document.getElementById("entry-title");
   if (title) title.placeholder = isTask ? "z. B. Vorlesung 3 ansehen" : "z. B. Mathe-Klausur";
   const hint = document.getElementById("entry-hint");
   if (hint) hint.textContent = isTask
-    ? "Aufgaben erscheinen in der Checkliste des Moduls, im Kalender und in „Fokus heute“."
+    ? "Aufgaben erscheinen in der Checkliste des Moduls, im Kalender und in „Fokus heute“ — optional wiederkehrend."
     : "Prüfungen sind Kalendertermine (mit optionaler Wiederholung & Farbe).";
 }
 if (entryKindSel) entryKindSel.addEventListener("change", updateEntryFormMode);
@@ -2052,7 +2219,9 @@ if (entryForm) entryForm.addEventListener("submit", (e) => {
     const modSel = document.getElementById("entry-module");
     const mod = state.modules.find((m) => m.id === modSel.value);
     if (!mod) { showSnackbar("Bitte ein Modul wählen (oder zuerst eins anlegen)."); return; }
-    mod.tasks.push(makeTask({ text: title, date, startTime, endTime, url }));
+    const repeat = normalizeRepeat(document.getElementById("entry-repeat").value);
+    const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
+    mod.tasks.push(makeTask({ text: title, date, startTime, endTime, url, repeat, repeatUntil }));
   } else {
     const repeat = document.getElementById("entry-repeat").value || null;
     const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
@@ -2413,7 +2582,9 @@ function renderGradeComponents(wrap, m) {
 
 function renderModuleCard(m) {
   const pct = moduleProgress(m);
-  const done = m.tasks.filter((t) => t.done).length;
+  // Zähler „erledigt": bei Serien zählt das maßgebliche Vorkommen (wie im Fortschritt).
+  const today = todayIso();
+  const done = m.tasks.filter((t) => taskCompletion(t, today) >= 1).length;
   const hasComponents = m.gradeComponents && m.gradeComponents.length > 0;
   // Nächste anstehende Fälligkeit (nur bei offenen Modulen relevant).
   const nd = m.completed ? null : nextModuleDue(m, todayIso());
@@ -2480,8 +2651,16 @@ function renderModuleCard(m) {
     const cbId = `t-${t.id}`;
     const subDone = t.subtasks.filter((s) => s.done).length;
     const subLabel = t.subtasks.length ? ` (${subDone}/${t.subtasks.length})` : "";
-    const ds = (t.date && !t.done) ? dueStatus(t.date) : null;
+    // Für wiederkehrende Aufgaben zählt das maßgebliche Vorkommen (nächstes
+    // offenes ab heute). occDate steuert Fälligkeit + Abhaken, occDone das Häkchen.
+    const occ = currentTaskOccurrence(t, todayIso());
+    const occDate = occ ? occ.date : t.date;
+    const occDone = occ ? occ.done : !!t.done;
+    const ds = (occDate && !occDone) ? dueStatus(occDate) : null;
     const dueBadge = ds ? `<span class="due-badge ${ds.cls}">${ds.label}</span>` : "";
+    const repeatBadge = t.repeat
+      ? `<span class="repeat-badge" title="${repeatLabel(t.repeat)}${t.repeatUntil ? ` bis ${formatDate(t.repeatUntil)}` : ""}">${icon("repeat")} ${repeatLabel(t.repeat)}</span>`
+      : "";
     // Uhrzeit-Badge (Von–Bis), falls gesetzt.
     const tr = timeRange(t.startTime, t.endTime);
     const timeBadge = tr ? `<span class="time-badge">${icon("clock")} ${tr}</span>` : "";
@@ -2492,13 +2671,14 @@ function renderModuleCard(m) {
 
     li.innerHTML = `
       <div class="task-row">
-        <input type="checkbox" class="task-done" id="${cbId}" ${t.done ? "checked" : ""} />
-        <label for="${cbId}" class="${t.done ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
+        <input type="checkbox" class="task-done" id="${cbId}" ${occDone ? "checked" : ""} />
+        <label for="${cbId}" class="${occDone ? "done" : ""}">${escapeHtml(t.text)}<span class="muted-inline">${subLabel}</span></label>
         ${timeBadge}
+        ${repeatBadge}
         ${dueBadge}
         ${linkChip}
         <input type="date" class="task-date" data-date value="${t.date || ""}" title="Terminieren (erscheint im Kalender & im Fokus heute)" aria-label="Datum von ${escapeHtml(t.text)}" />
-        <button class="icon-btn task-opts-btn" data-task-opts title="Uhrzeit & Link bearbeiten" aria-label="Uhrzeit und Link von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
+        <button class="icon-btn task-opts-btn" data-task-opts title="Uhrzeit, Link & Wiederholung bearbeiten" aria-label="Uhrzeit, Link und Wiederholung von ${escapeHtml(t.text)} bearbeiten">${icon("edit")}</button>
         <button class="icon-btn task-dup-btn" data-dup-task title="Aufgabe duplizieren" aria-label="${escapeHtml(t.text)} duplizieren">${icon("copy")}</button>
         <button class="del-btn" data-del-task title="Eintrag löschen" aria-label="${escapeHtml(t.text)} löschen">${icon("close")}</button>
       </div>
@@ -2507,6 +2687,18 @@ function renderModuleCard(m) {
         <label class="task-opt">Bis <input type="time" data-task-end value="${t.endTime || ""}" aria-label="Endzeit von ${escapeHtml(t.text)}" /></label>
         <label class="task-opt task-opt-url">Link:
           <input type="url" data-task-url placeholder="https://… (Plattform/Aufzeichnung)" value="${escapeHtml(t.url || "")}" aria-label="Link von ${escapeHtml(t.text)}" />
+        </label>
+        <label class="task-opt" title="${t.date ? "" : "Erst terminieren, dann wiederholen"}">Wiederholung
+          <select data-task-repeat aria-label="Wiederholung von ${escapeHtml(t.text)}" ${t.date ? "" : "disabled"}>
+            <option value=""${!t.repeat ? " selected" : ""}>Keine</option>
+            <option value="daily"${t.repeat === "daily" ? " selected" : ""}>Täglich</option>
+            <option value="weekly"${t.repeat === "weekly" ? " selected" : ""}>Wöchentlich</option>
+            <option value="biweekly"${t.repeat === "biweekly" ? " selected" : ""}>Alle 2 Wochen</option>
+            <option value="monthly"${t.repeat === "monthly" ? " selected" : ""}>Monatlich</option>
+          </select>
+        </label>
+        <label class="task-opt" title="Serienende (optional)">Serie bis
+          <input type="date" data-task-repeat-until value="${t.repeatUntil || ""}" ${t.repeat ? "" : "disabled"} aria-label="Serienende von ${escapeHtml(t.text)}" />
         </label>
       </div>
       <ul class="subtask-list"></ul>
@@ -2523,8 +2715,9 @@ function renderModuleCard(m) {
         <button class="del-btn" title="Teilaufgabe löschen" aria-label="Teilaufgabe ${escapeHtml(s.text)} löschen">${icon("close")}</button>`;
       sli.querySelector("input").addEventListener("change", (ev) => {
         s.done = ev.target.checked;
-        if (t.subtasks.length && t.subtasks.every((x) => x.done)) t.done = true;
-        else if (!ev.target.checked) t.done = false;
+        // Für Serien betrifft „Parent erledigt" das maßgebliche Vorkommen.
+        if (t.subtasks.length && t.subtasks.every((x) => x.done)) setTaskOccurrenceDone(t, occDate, true);
+        else if (!ev.target.checked) setTaskOccurrenceDone(t, occDate, false);
         saveState(); renderModules();
       });
       sli.querySelector(".del-btn").addEventListener("click", () => {
@@ -2549,15 +2742,32 @@ function renderModuleCard(m) {
     });
 
     li.querySelector(".task-done").addEventListener("change", (ev) => {
-      t.done = ev.target.checked;
+      // Bei Serien das maßgebliche Vorkommen (occDate) abhaken, sonst t.done.
+      setTaskOccurrenceDone(t, occDate, ev.target.checked);
       t.subtasks.forEach((s) => { s.done = ev.target.checked; });
       saveState(); renderModules();
     });
-    // Schedule date -> drives Calendar + Today's Focus
+    // Schedule date -> drives Calendar + Today's Focus. Ohne Datum ergibt eine
+    // Wiederholung keinen Sinn → Serienfelder zurücksetzen.
     li.querySelector("[data-date]").addEventListener("change", (ev) => {
       t.date = ev.target.value || null;
+      if (!t.date) { t.repeat = null; t.repeatUntil = null; t.doneDates = []; }
       saveState();
       renderModules();
+    });
+    // Wiederholung der Aufgabe setzen (#4). Wechsel des Musters leert doneDates,
+    // damit alte Vorkommen-Haken nicht in ein anderes Raster „durchbluten".
+    li.querySelector("[data-task-repeat]").addEventListener("change", (ev) => {
+      const r = normalizeRepeat(ev.target.value);
+      if (r && !t.date) { showSnackbar("Bitte zuerst ein Datum setzen, dann wiederholen."); renderModules(); return; }
+      t.repeat = r;
+      t.doneDates = [];
+      if (!r) t.repeatUntil = null;
+      saveState(); renderModules();
+    });
+    li.querySelector("[data-task-repeat-until]").addEventListener("change", (ev) => {
+      t.repeatUntil = t.repeat ? (ev.target.value || null) : null;
+      saveState(); renderModules();
     });
     li.querySelector("[data-del-task]").addEventListener("click", () => {
       const idx = m.tasks.indexOf(t);
@@ -2575,6 +2785,8 @@ function renderModuleCard(m) {
       const copy = {
         id: uid(), text: t.text, done: false, date: null,
         startTime: t.startTime, endTime: t.endTime, url: t.url,
+        // Datum wird nicht übernommen → Serie ergibt keinen Sinn, Kopie startet einmalig.
+        repeat: null, repeatUntil: null, doneDates: [],
         subtasks: (t.subtasks || []).map((s) => ({ id: uid(), text: s.text, done: false })),
       };
       const idx = m.tasks.indexOf(t);
@@ -3870,6 +4082,7 @@ const ICONS = {
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
   link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
 };
 function icon(name, cls) {
   const p = ICONS[name] || "";
@@ -4507,10 +4720,10 @@ function renderAgenda() {
       if (countdownShownExam && e.id === countdownShownExam.id && iso === countdownShownExam.date) return;
       week.push({ iso, time: e.startTime, kind: e.type, text: e.title });
     });
-    tasksOnDate(iso).forEach(({ module, task }) => {
+    tasksOnDate(iso).forEach(({ module, task, done }) => {
       // Heute geplante Aufgaben stehen bereits in „Fokus heute" → hier auslassen.
       if (iso === today) return;
-      if (!task.done) week.push({ iso, time: task.startTime, kind: "task", text: `${task.text} · ${module.name}` });
+      if (!done) week.push({ iso, time: task.startTime, kind: "task", text: `${task.text} · ${module.name}` });
     });
     d.setDate(d.getDate() + 1);
   }
@@ -4525,7 +4738,16 @@ function renderAgenda() {
     if (date && date > horizonIso) later.push({ e, date });
   });
   state.modules.forEach((m) => m.tasks.forEach((t) => {
-    if (t.date && !t.done && t.date > horizonIso) later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, startTime: t.startTime }, date: t.date });
+    if (!t.date) return;
+    if (t.repeat) {
+      // Wiederkehrende Aufgabe: nächstes offenes Vorkommen nach dem Wochen-Horizont.
+      const date = nextTaskOccurrence(t, afterHorizonIso);
+      if (date && date > horizonIso && !isTaskOccurrenceDone(t, date)) {
+        later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, startTime: t.startTime }, date });
+      }
+    } else if (!t.done && t.date > horizonIso) {
+      later.push({ e: { type: "task", title: `${t.text} · ${m.name}`, startTime: t.startTime }, date: t.date });
+    }
   }));
   later.sort((a, b) => (a.date + (a.e.startTime || "99:99")).localeCompare(b.date + (b.e.startTime || "99:99")));
   const laterTop = later.slice(0, 5);
@@ -4581,7 +4803,9 @@ if (typeof module !== "undefined" && module.exports) {
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
     itemSpan, layoutOverlaps, makeTask, buildHeatmap, nextModuleDue, dueStatusAt,
-    dueSoonSummary,
+    dueSoonSummary, normalizeRepeat,
+    taskOccursOn, nextTaskOccurrence, isTaskOccurrenceDone, setTaskOccurrenceDone,
+    currentTaskOccurrence,
   };
 }
 

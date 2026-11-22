@@ -116,7 +116,7 @@
       Melde dich einmal an — alle Apps übernehmen die Anmeldung automatisch.
     </p>
 
-    <form id="account-form" class="account-form">
+    <form id="account-form" class="account-form" hidden>
       <input type="email" id="account-email" placeholder="deine@email.de" autocomplete="username" required />
       <input type="password" id="account-password" placeholder="Passwort" autocomplete="current-password" required minlength="6" />
       <div class="account-actions">
@@ -183,9 +183,12 @@
         var signedIn = !!user;
         if (form) form.hidden = signedIn;
         if (loggedIn) loggedIn.hidden = !signedIn;
+        if (regBtn) regBtn.hidden = signedIn;
+        if (hintEl) hintEl.hidden = signedIn; // Hinweis „Melde dich an" nur zeigen, wenn abgemeldet
         if (signedIn && userEl) userEl.textContent = user.email || "";
       }
 
+      render(null); // Standard: abgemeldet (Formular sichtbar), bis getSession() entscheidet
       sb.auth.getSession().then(function (res) {
         render(res && res.data && res.data.session ? res.data.session.user : null);
       }).catch(function () {});

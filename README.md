@@ -20,7 +20,7 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **🔗 Modul-Weblinks im Dashboard** – bei einem angehefteten Modul werden eingetragene Weblinks als anklickbare Chips auch unter „Aktuell in Bearbeitung" angezeigt.
 - **⏳ Prüfungs-Countdown** und **Demnächst**-Liste.
 - **🌓 Theme** – hell / dunkel / automatisch; Übersicht wahlweise **ein- oder zweispaltig** (umschaltbar, bei genug Breite inkl. iPhone-Querformat).
-- **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben.
+- **🔔 Erinnerungen** – Browser-Benachrichtigung für heute anstehende Prüfungen/Abgaben, zusätzlich ein **In-App-Fälligkeits-Hinweis** oben in der Übersicht beim Öffnen (bündelt überfällige + heute/morgen fällige Prüfungen, Abgaben und Aufgaben; pro Tag ausblendbar).
 - **🎓 Teilnoten** – Endnote je Modul aus gewichteten Komponenten (z. B. Klausur 70 % + Übung 30 %).
 - **📈 Noten-Prognose** – benötigter Schnitt für ein Ziel + bester/schlechtester möglicher Endschnitt.
 - **🗂️ Drag & Drop** – Module und Aufgaben per Ziehen umsortieren.
@@ -36,7 +36,9 @@ Das Repo ist ein kleiner **App-Hub**: Die Wurzel-`index.html` ist ein Launcher
 
 - **Launcher:** `index.html` (Wurzel) → zeigt die verfügbaren Apps als Kacheln
   und bietet eine **zentrale Anmeldung** (Konto): einmal anmelden, alle Apps
-  übernehmen die Session automatisch.
+  übernehmen die Session automatisch. Die Studien-Tracker-Kachel zeigt zudem
+  **Mini-Stats** aus den lokal gespeicherten Daten (z. B. „3 Module aktiv ·
+  nächste Prüfung in 5 Tagen"; nur lesend, ohne Daten bleibt die Kachel schlicht).
 - **App #1 – Studien-Tracker:** `apps/study/` (eigenständige PWA mit eigenem
   `app.js`, `styles.css`, `manifest.webmanifest`, `sw.js`, Icons). Oben links
   führt **„← Apps"** zurück zum Launcher.

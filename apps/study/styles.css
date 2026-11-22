@@ -196,6 +196,32 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .countdown-card.none { background: var(--surface); border: 1px solid var(--border); color: var(--muted); display: block; box-shadow: var(--shadow-sm); }
 @media (prefers-reduced-motion: reduce) { .countdown-card.urgent { animation: none; } }
 
+/* In-App-Fälligkeits-Hinweis beim Öffnen (#6). Dezente Karte oben im Dashboard;
+   „urgent" (überfällig oder heute fällig) bekommt einen warmen Rand. */
+.due-notice {
+  padding: 14px 16px; margin-bottom: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 4px solid var(--warn);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.due-notice[hidden] { display: none; }
+.due-notice.urgent { border-left-color: var(--danger); }
+.due-notice-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.due-notice-lead { font-weight: 650; font-size: 0.95rem; }
+.due-notice-close {
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+  font-size: 1.3rem; line-height: 1; padding: 0 4px; border-radius: 8px;
+}
+.due-notice-close:hover { color: var(--text); background: var(--surface-2); }
+.due-notice-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.due-notice-item { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+.due-notice-kind { flex: 0 0 auto; }
+.due-notice-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.due-notice-when { flex: 0 0 auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.due-notice-item.due-overdue .due-notice-when { color: var(--danger); font-weight: 600; }
+.due-notice-item.due-today .due-notice-when { color: var(--warn); font-weight: 600; }
+.due-notice-more { font-size: 0.8rem; color: var(--muted); }
+
 /* Pomodoro */
 .pomodoro-card { padding: 15px; text-align: center; }
 .pomo-mode-tabs { display: inline-flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 999px; margin-bottom: 14px; }
@@ -877,6 +903,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .empty-state.illustrated::before {
   content: "🗒️"; display: block; font-size: 1.7rem; margin-bottom: 8px; opacity: 0.7;
 }
+/* Themenpassende Icons für bestimmte Leere-Zustände (#3) */
+.empty-state.hm-empty::before { content: "🔥"; }
+.empty-state.sem-empty::before { content: "📊"; }
 
 /* Sanfterer Tab-Übergang (Punkt 4) */
 .tab-panel.active { animation: slideUp 0.22s cubic-bezier(0.22, 1, 0.36, 1); }

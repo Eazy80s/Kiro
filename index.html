@@ -65,6 +65,11 @@
     }
     .app-tile .app-name { font-size: 1.15rem; font-weight: 650; }
     .app-tile .app-desc { color: var(--muted); font-size: 0.9rem; }
+    .app-tile .app-stats {
+      margin-top: 2px; font-size: 0.82rem; color: var(--accent); font-weight: 600;
+      display: flex; flex-wrap: wrap; gap: 4px 8px;
+    }
+    .app-tile .app-stats[hidden] { display: none; }
     .launcher-foot { margin-top: 40px; color: var(--muted); font-size: 0.82rem; }
 
     /* Konto / zentrale Anmeldung */
@@ -107,6 +112,8 @@
       <img class="icon" src="apps/study/icon.svg" alt="" aria-hidden="true" />
       <span class="app-name">🎓 Studien-Tracker</span>
       <span class="app-desc">Module, Kalender, Noten, Pomodoro &amp; Lernzeit.</span>
+      <!-- Mini-Stats aus den lokal gespeicherten Tracker-Daten (nur lesend, defensiv) -->
+      <span class="app-stats" id="study-stats" hidden></span>
     </a>
   </main>
 
@@ -248,6 +255,100 @@
           setStatus("Abgemeldet. Die Apps laufen weiterhin lokal.");
         });
       });
+    })();
+  </script>
+
+  <script>
+    /* Mini-Stats auf der Studien-Tracker-Kachel (#2).
+       Der Launcher liest die lokal gespeicherten Tracker-Daten (Key
+       "study-tracker-v1") NUR LESEND und zeigt eine kurze Zusammenfassung
+       („3 Module aktiv · nächste Prüfung in 5 Tagen"). Streng defensiv:
+       fehlende/kaputte Daten → gar nichts anzeigen (Kachel bleibt wie bisher).
+
+       Bewusste kleine Doppelung der Datums-/Wiederholungslogik aus der App
+       (Hub-Stufe A). Erst bei einer zweiten App wird gemeinsame Logik nach
+       apps/shared/ herausgelöst. */
+    (function () {
+      "use strict";
+      var el = document.getElementById("study-stats");
+      if (!el) return;
+
+      function isoOf(d) {
+        return d.getFullYear() + "-" +
+          String(d.getMonth() + 1).padStart(2, "0") + "-" +
+          String(d.getDate()).padStart(2, "0");
+      }
+      function daysBetween(aIso, bIso) {
+        return Math.round(
+          (new Date(bIso + "T00:00:00") - new Date(aIso + "T00:00:00")) / 86400000
+        );
+      }
+      // Fällt ein (ggf. wiederkehrender) Termin auf dateStr? Minimal nachgebildet
+      // aus der App (daily/weekly/biweekly/monthly, optionales repeatUntil).
+      function eventOccursOn(e, dateStr) {
+        if (!e || typeof e.date !== "string") return false;
+        if (e.date === dateStr) return true;
+        if (!e.repeat || dateStr < e.date) return false;
+        if (e.repeatUntil && dateStr > e.repeatUntil) return false;
+        var base = new Date(e.date + "T00:00:00");
+        var d = new Date(dateStr + "T00:00:00");
+        if (e.repeat === "daily") return true;
+        if (e.repeat === "weekly") return base.getDay() === d.getDay();
+        if (e.repeat === "biweekly") {
+          if (base.getDay() !== d.getDay()) return false;
+          var weeks = Math.round((d - base) / (7 * 86400000));
+          return weeks % 2 === 0;
+        }
+        if (e.repeat === "monthly") return base.getDate() === d.getDate();
+        return false;
+      }
+      // Nächstes Vorkommen eines Termins ab fromIso (oder null).
+      function nextOccurrence(e, fromIso) {
+        if (!e.repeat) return e.date >= fromIso ? e.date : null;
+        if (e.date >= fromIso) return e.date;
+        var d = new Date(fromIso + "T00:00:00");
+        for (var i = 0; i < 740; i++) {
+          var iso = isoOf(d);
+          if (eventOccursOn(e, iso)) return iso;
+          d.setDate(d.getDate() + 1);
+        }
+        return null;
+      }
+
+      var data;
+      try {
+        var raw = localStorage.getItem("study-tracker-v1");
+        if (!raw) return;                 // App noch nie benutzt → nichts zeigen
+        data = JSON.parse(raw);
+      } catch (e) { return; }             // kaputtes JSON → nichts zeigen
+      if (!data || typeof data !== "object") return;
+
+      var modules = Array.isArray(data.modules) ? data.modules : [];
+      var events = Array.isArray(data.events) ? data.events : [];
+      var today = isoOf(new Date());
+
+      var bits = [];
+
+      // (1) Aktive Module = angelegt, aber nicht abgeschlossen.
+      var active = modules.filter(function (m) { return m && !m.completed; }).length;
+      if (active > 0) bits.push(active + (active === 1 ? " Modul aktiv" : " Module aktiv"));
+
+      // (2) Nächste Prüfung (type "exam") ab heute, inkl. Wiederholung.
+      var nextExamDate = null;
+      events.forEach(function (e) {
+        if (!e || e.type !== "exam") return;
+        var occ = nextOccurrence(e, today);
+        if (occ && (!nextExamDate || occ < nextExamDate)) nextExamDate = occ;
+      });
+      if (nextExamDate) {
+        var diff = daysBetween(today, nextExamDate);
+        var when = diff === 0 ? "heute" : diff === 1 ? "morgen" : "in " + diff + " Tagen";
+        bits.push("nächste Prüfung " + when);
+      }
+
+      if (!bits.length) return;           // nichts Sinnvolles → Kachel unverändert
+      el.textContent = bits.join(" · ");
+      el.hidden = false;
     })();
   </script>
 </body>

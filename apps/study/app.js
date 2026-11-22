@@ -508,6 +508,64 @@ function tasksByDue() {
   return out.sort((a, b) => a.task.date.localeCompare(b.task.date));
 }
 
+// Fälligkeits-Übersicht für den In-App-Hinweis beim Öffnen (#6). Zuverlässiger
+// als die an ein geöffnetes App-Fenster gebundene System-Benachrichtigung:
+// bündelt überfällige + heute/morgen fällige Prüfungen, Abgaben und Aufgaben zu
+// einer kurzen Liste. Reine Funktion (nimmt events/modules/heute als Argument)
+// → ohne DOM testbar. Rückgabe: { total, overdue, today, soon, items:[...] }.
+// Jedes item: { kind: "exam"|"deadline"|"task", title, date, when:"overdue"|"today"|"soon", days }.
+function dueSoonSummary(events, modules, todayStr) {
+  const items = [];
+  const bucket = (dateStr) => {
+    const diff = daysBetween(todayStr, dateStr);
+    if (diff < 0) return { when: "overdue", days: diff };
+    if (diff === 0) return { when: "today", days: 0 };
+    if (diff === 1) return { when: "soon", days: 1 };
+    return null; // weiter in der Zukunft → nicht im Öffnungs-Hinweis
+  };
+
+  // Prüfungen/Abgaben aus dem Kalender. Wiederkehrende zählen über ihr nächstes
+  // Vorkommen ab heute (also nie „überfällig", sondern heute/morgen).
+  (events || []).forEach((e) => {
+    if (e.type !== "exam" && e.type !== "deadline") return;
+    let date, b;
+    if (e.repeat) {
+      date = nextOccurrence(e, todayStr);
+      if (!date) return;
+      b = bucket(date);
+    } else {
+      date = e.date;
+      b = bucket(date);
+    }
+    if (!b) return;
+    items.push({ kind: e.type, title: e.title || "", date, when: b.when, days: b.days });
+  });
+
+  // Offene, terminierte Aufgaben.
+  (modules || []).forEach((m) => {
+    (m.tasks || []).forEach((t) => {
+      if (t.done || !t.date) return;
+      const b = bucket(t.date);
+      if (!b) return;
+      items.push({ kind: "task", title: t.text || "", date: t.date, when: b.when, days: b.days });
+    });
+  });
+
+  // Sortierung: zuerst nach Fälligkeit (überfällig → heute → morgen), innerhalb
+  // nach Datum. So steht das Dringendste oben.
+  const rank = { overdue: 0, today: 1, soon: 2 };
+  items.sort((a, b) => (rank[a.when] - rank[b.when]) || a.date.localeCompare(b.date));
+
+  const count = (w) => items.filter((it) => it.when === w).length;
+  return {
+    total: items.length,
+    overdue: count("overdue"),
+    today: count("today"),
+    soon: count("soon"),
+    items,
+  };
+}
+
 /* ---------- ICS-Export des Kalenders (Punkt 3) ---------- */
 function icsEscape(s) { return String(s).replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n"); }
 function icsDate(iso, time) {
@@ -757,6 +815,7 @@ function renderDashboard() {
     }
   }
 
+  renderDueNotice();
   applyDashCols();
   renderPinnedModules();
   renderOverdue();
@@ -783,8 +842,20 @@ function renderSemesterStats() {
   const block = document.getElementById("semester-block");
   if (!wrap || !block) return;
   const rows = gradesBySemester(state.modules);
-  // Erst ab zwei benoteten Semestern ist ein „Verlauf“ aussagekräftig.
-  if (rows.length < 2) { wrap.innerHTML = ""; block.hidden = true; return; }
+  // Ohne jede Note bleibt der Block ausgeblendet (auf frischer App nicht störend).
+  if (rows.length === 0) { wrap.innerHTML = ""; block.hidden = true; return; }
+  // Mit genau einem benoteten Semester gibt es noch keinen „Verlauf" — statt den
+  // Block verschwinden zu lassen, einen freundlichen Hinweis auf das Kommende zeigen.
+  if (rows.length === 1) {
+    block.hidden = false;
+    wrap.innerHTML =
+      `<p class="empty-state illustrated sem-empty">
+         Erst mit Noten aus einem zweiten Semester entsteht hier ein Verlauf
+         mit Trend.<br />Bisher benotet: <strong>${escapeHtml(rows[0].semester)}</strong>
+         (Ø ${rows[0].avg.toFixed(2).replace(".", ",")}).
+       </p>`;
+    return;
+  }
   block.hidden = false;
 
   // Balkenbreite: 1,0 = voll, 5,0 = kurz (bessere Note = längerer, grünerer Balken).
@@ -809,6 +880,62 @@ function renderSemesterStats() {
         <div class="sem-bar"><div class="sem-fill ${cls}" style="width:${widthFor(r.avg)}%"></div></div>
       </div>`;
   }).join("");
+}
+
+// In-App-Fälligkeits-Hinweis (#6). Zeigt beim Öffnen eine kurze Zusammenfassung
+// überfälliger + heute/morgen fälliger Prüfungen, Abgaben und Aufgaben. Pro Tag
+// einmal schließbar (gerätelokaler Key, nicht im gesyncten State), damit der
+// Hinweis nicht nervt, aber am nächsten Tag wieder erscheint.
+const DUE_NOTICE_DISMISS_KEY = "study-tracker-due-dismissed";
+function dueNoticeDismissedToday() {
+  try { return localStorage.getItem(DUE_NOTICE_DISMISS_KEY) === todayIso(); } catch (e) { return false; }
+}
+function dismissDueNoticeToday() {
+  try { localStorage.setItem(DUE_NOTICE_DISMISS_KEY, todayIso()); } catch (e) {}
+}
+function renderDueNotice() {
+  const box = document.getElementById("due-notice");
+  if (!box) return;
+  const sum = dueSoonSummary(state.events, state.modules, todayIso());
+  if (!sum.total || dueNoticeDismissedToday()) { box.hidden = true; box.innerHTML = ""; return; }
+
+  // Kopfzeile: knappe Zählung je Dringlichkeit.
+  const parts = [];
+  if (sum.overdue) parts.push(`${sum.overdue} überfällig`);
+  if (sum.today) parts.push(`${sum.today} heute`);
+  if (sum.soon) parts.push(`${sum.soon} morgen`);
+  const urgent = sum.overdue > 0 || sum.today > 0;
+
+  const kindIcon = { exam: "📝", deadline: "⏳", task: "✅" };
+  // Höchstens 5 Einträge zeigen, Rest als „+N weitere".
+  const shown = sum.items.slice(0, 5);
+  const rest = sum.total - shown.length;
+  const whenLabel = (it) => {
+    if (it.when === "overdue") {
+      const d = Math.abs(it.days);
+      return `überfällig (${d} ${d === 1 ? "Tag" : "Tage"})`;
+    }
+    if (it.when === "today") return "heute";
+    return "morgen";
+  };
+  const list = shown.map((it) =>
+    `<li class="due-notice-item due-${it.when}">
+       <span class="due-notice-kind" aria-hidden="true">${kindIcon[it.kind] || "•"}</span>
+       <span class="due-notice-title">${escapeHtml(it.title || "(ohne Titel)")}</span>
+       <span class="due-notice-when">${whenLabel(it)}</span>
+     </li>`
+  ).join("");
+
+  box.hidden = false;
+  box.className = "due-notice dash-full" + (urgent ? " urgent" : "");
+  box.innerHTML =
+    `<div class="due-notice-head">
+       <span class="due-notice-lead">🔔 Fällig: ${escapeHtml(parts.join(" · "))}</span>
+       <button type="button" id="due-notice-close" class="due-notice-close" aria-label="Hinweis für heute ausblenden" title="Für heute ausblenden">×</button>
+     </div>
+     <ul class="due-notice-list">${list}${rest > 0 ? `<li class="due-notice-more">+${rest} weitere</li>` : ""}</ul>`;
+  const close = document.getElementById("due-notice-close");
+  if (close) close.addEventListener("click", () => { dismissDueNoticeToday(); renderDueNotice(); });
 }
 
 // Merkt die im Countdown gezeigte Prüfung (Id + Datum), damit „Anstehend" sie
@@ -3224,7 +3351,14 @@ function renderStudyHeatmap() {
   const wrap = document.getElementById("study-heatmap");
   if (!wrap) return;
   const { weeks, maxSec } = buildHeatmap(stats.daily || {}, todayIso(), 365);
-  if (maxSec === 0) { wrap.innerHTML = `<p class="empty-state">Noch keine Lernzeit im letzten Jahr.</p>`; return; }
+  if (maxSec === 0) {
+    wrap.innerHTML =
+      `<p class="empty-state illustrated hm-empty">
+         Hier wächst deine Lernzeit-Heatmap.<br />
+         Starte im Fokus-Timer eine Einheit — jeder Tag färbt ein Feld ein.
+       </p>`;
+    return;
+  }
   // 4 Intensitätsstufen relativ zum Maximum.
   const level = (sec) => {
     if (!sec) return 0;
@@ -4447,6 +4581,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
     itemSpan, layoutOverlaps, makeTask, buildHeatmap, nextModuleDue, dueStatusAt,
+    dueSoonSummary,
   };
 }
 

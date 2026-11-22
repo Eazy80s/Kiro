@@ -369,6 +369,46 @@ eq(api.migrate({ dashCols: 5 }).dashCols, 1, "migrate: ungültige dashCols → 1
   eq(api.migrate({}).radio, { url: "", label: "", volume: 0.6 }, "migrate: Radio-Default");
 }
 
+/* ---- dueSoonSummary: In-App-Fälligkeits-Hinweis beim Öffnen (#6) ----
+   Bündelt überfällige + heute/morgen fällige Prüfungen, Abgaben und Aufgaben.
+   Signatur: dueSoonSummary(events, modules, todayStr). */
+const dss = api.dueSoonSummary;
+{
+  const events = [
+    { id: "e1", date: "2026-11-20", title: "Alte Klausur", type: "exam" },      // überfällig (vor heute)
+    { id: "e2", date: "2026-11-22", title: "Heute-Abgabe", type: "deadline" },   // heute
+    { id: "e3", date: "2026-11-23", title: "Morgen-Prüfung", type: "exam" },     // morgen
+    { id: "e4", date: "2026-11-30", title: "Später", type: "exam" },             // zu weit weg → ignoriert
+    { id: "e5", date: "2026-11-22", title: "Kein Prüfungstyp", type: "other" },  // falscher Typ → ignoriert
+  ];
+  const modules = [
+    { tasks: [
+      { text: "Überfällige Aufgabe", date: "2026-11-19", done: false },          // überfällig
+      { text: "Heute-Aufgabe", date: "2026-11-22", done: false },                // heute
+      { text: "Schon erledigt", date: "2026-11-22", done: true },                // done → ignoriert
+      { text: "Ohne Datum", date: null, done: false },                           // kein Datum → ignoriert
+    ] },
+  ];
+  const s = dss(events, modules, "2026-11-22");
+  eq([s.total, s.overdue, s.today, s.soon], [5, 2, 2, 1], "dueSoonSummary: Zählung überfällig/heute/morgen");
+  // Reihenfolge: überfällige zuerst (nach Datum), dann heute, dann morgen.
+  eq(s.items[0].when, "overdue", "dueSoonSummary: Überfälliges steht oben");
+  eq(s.items[s.items.length - 1].when, "soon", "dueSoonSummary: Morgen steht unten");
+  eq(s.items.every((it) => ["exam", "deadline", "task"].includes(it.kind)), true, "dueSoonSummary: nur erlaubte Arten");
+}
+{
+  // Wiederkehrende Prüfung: zählt über ihr nächstes Vorkommen (nie „überfällig").
+  const s = dss(
+    [{ id: "r1", date: "2026-11-15", title: "Wöchentlich", type: "exam", repeat: "weekly" }],
+    [], "2026-11-22"
+  );
+  // 2026-11-15 war ein Sonntag → nächstes Vorkommen am 2026-11-22 (heute).
+  eq([s.total, s.today], [1, 1], "dueSoonSummary: wiederkehrende Prüfung über nächstes Vorkommen");
+  eq(s.items[0].when, "today", "dueSoonSummary: Wiederholung heute fällig");
+}
+eq(dss([], [], "2026-11-22").total, 0, "dueSoonSummary: nichts fällig → leer");
+eq(dss(null, null, "2026-11-22").total, 0, "dueSoonSummary: defensiv bei null-Eingaben");
+
 /* ---- nextModuleDue / dueStatusAt ---- */
 const nmd = api.nextModuleDue, dsa = api.dueStatusAt;
 {

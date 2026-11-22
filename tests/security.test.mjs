@@ -110,7 +110,8 @@ function eq(actual, expected, label) {
 function ok(cond, label) { if (cond) passed++; else { failed++; console.error(`✗ ${label}`); } }
 
 /* ---- Exporte vorhanden? ---- */
-["sanitizeUrl", "sanitizeHexColor", "migrate", "escapeHtml", "syncDecision"].forEach((name) => {
+["sanitizeUrl", "sanitizeHexColor", "migrate", "escapeHtml", "syncDecision",
+ "normalizeEstimate", "nextExamDaysAway", "planCandidates", "planDay", "whatNowReason"].forEach((name) => {
   ok(typeof api[name] === "function", `Export vorhanden: ${name}`);
 });
 
@@ -461,6 +462,116 @@ eq(api.migrate({ dashCols: 5 }).dashCols, 1, "migrate: ungültige dashCols → 1
     { text: "Serie erledigt", date: "2026-11-23", repeat: "weekly", doneDates: ["2026-11-30"] },
   ]};
   eq(api.nextModuleDue(mod3, "2026-11-24"), null, "nextModuleDue: Serie mit erledigtem nächsten Vorkommen → null");
+}
+
+/* ---- „Heute planen" (Tagesplan aus Zeitbudget) ---- */
+{
+  // normalizeEstimate
+  eq([api.normalizeEstimate(45), api.normalizeEstimate("90"), api.normalizeEstimate(0), api.normalizeEstimate(2000), api.normalizeEstimate(null), api.normalizeEstimate("")],
+     [45, 90, null, null, null, null], "normalizeEstimate: 1..1440 oder null");
+
+  // nextExamDaysAway: zugeordnete Prüfung schlägt globale; ohne Zuordnung Fallback global.
+  const events = [
+    { id: "x1", type: "exam", date: "2026-11-27", moduleId: "mA" },     // in 5 Tagen (zugeordnet mA)
+    { id: "x2", type: "exam", date: "2026-11-24", moduleId: null },     // in 2 Tagen (global am nächsten)
+    { id: "x3", type: "other", date: "2026-11-23", moduleId: "mA" },    // kein exam → ignoriert
+  ];
+  eq(api.nextExamDaysAway(events, "mA", "2026-11-22"), 5, "nextExamDaysAway: zugeordnete Prüfung (mA) in 5 Tagen");
+  eq(api.nextExamDaysAway(events, "mB", "2026-11-22"), 2, "nextExamDaysAway: ohne Zuordnung → global nächste (2 Tage)");
+  eq(api.nextExamDaysAway([], "mA", "2026-11-22"), null, "nextExamDaysAway: keine Prüfung → null");
+
+  // planCandidates: nur angeheftete, offene Module; Sortierung Prüfungsnähe→Fälligkeit→Rückstand.
+  const modules = [
+    { id: "mA", name: "Mathe", pinned: true, completed: false, tasks: [
+      { id: "tA1", text: "Blatt 3", date: "2026-11-22", done: false, estimateMin: 90 },   // heute, mA (Prüfung in 5)
+      { id: "tA2", text: "Blatt 4", date: "2026-11-20", done: false, estimateMin: 60 },   // überfällig, mA
+    ] },
+    { id: "mB", name: "Physik", pinned: true, completed: false, tasks: [
+      { id: "tB1", text: "Übung 1", date: "2026-11-22", done: false, estimateMin: 30 },   // heute, mB (Prüfung in 2 via global)
+    ] },
+    { id: "mC", name: "Nicht angeheftet", pinned: false, completed: false, tasks: [
+      { id: "tC1", text: "Ignoriert", date: "2026-11-22", done: false },
+    ] },
+  ];
+  const cands = api.planCandidates(modules, events, { perTask: {} }, "2026-11-22", 45);
+  // mB-Task zuerst (Prüfung in 2 Tagen < 5). Dann mA: überfällig vor heute.
+  eq(cands.map((c) => c.taskId), ["tB1", "tA2", "tA1"], "planCandidates: Prüfungsnähe → Fälligkeit → Rückstand");
+  eq(cands.every((c) => c.moduleId !== "mC"), true, "planCandidates: nicht angeheftete Module ausgeschlossen");
+  // Default-Aufwand greift, wenn keine Schätzung gesetzt ist.
+  const noEst = api.planCandidates(
+    [{ id: "m", name: "M", pinned: true, completed: false, tasks: [{ id: "t", text: "X", date: "2026-11-22", done: false }] }],
+    [], { perTask: {} }, "2026-11-22", 45);
+  eq(noEst[0].remainingMin, 45, "planCandidates: ohne Schätzung → Default 45");
+  // Bereits gelernte Zeit reduziert den Rückstand; voll abgearbeitet → raus.
+  const withStudied = api.planCandidates(
+    [{ id: "m", name: "M", pinned: true, completed: false, tasks: [
+      { id: "t1", text: "Teilweise", date: "2026-11-22", done: false, estimateMin: 60 },
+      { id: "t2", text: "Fertig-Aufwand", date: "2026-11-22", done: false, estimateMin: 30 },
+    ] }],
+    [], { perTask: { t1: 1800, t2: 1800 } }, "2026-11-22", 45); // t1: 30 Min gelernt, t2: 30 Min
+  eq(withStudied.map((c) => c.taskId), ["t1"], "planCandidates: abgearbeiteter Aufwand (t2) fällt raus");
+  eq(withStudied[0].remainingMin, 30, "planCandidates: Rückstand = Schätzung − gelernt");
+
+  // planDay: Blockaufteilung mit Pausen; Pausen zählen NICHT gegen das Budget.
+  const plan = api.planDay(
+    [{ taskId: "t1", moduleId: "m", title: "A", remainingMin: 50, occDate: null }], // 50 Min Aufwand
+    50, 25, 5, 15, 4);  // Budget 50, Fokus 25, kurze Pause 5
+  const focus = plan.blocks.filter((b) => b.kind === "focus");
+  const breaks = plan.blocks.filter((b) => b.kind !== "focus");
+  eq(focus.length, 2, "planDay: 50 Min / 25 → 2 Fokusblöcke");
+  eq(plan.focusPlannedMin, 50, "planDay: 50 Fokusminuten geplant");
+  eq(breaks.length, 1, "planDay: eine Pause zwischen zwei Fokusblöcken");
+  eq(breaks[0].kind, "short", "planDay: kurze Pause (unter longEvery)");
+  // Reihenfolge + Zeitachse: Fokus(0) → Pause(25) → Fokus(30).
+  eq([plan.blocks[0].kind, plan.blocks[0].startOffsetMin], ["focus", 0], "planDay: erster Block ab 0");
+  eq([plan.blocks[1].kind, plan.blocks[1].startOffsetMin], ["short", 25], "planDay: Pause ab Minute 25");
+  eq([plan.blocks[2].kind, plan.blocks[2].startOffsetMin], ["focus", 30], "planDay: zweiter Fokus ab Minute 30 (nach Pause)");
+
+  // planDay: lange Pause nach je 4 Fokusblöcken.
+  const plan2 = api.planDay(
+    [{ taskId: "t", moduleId: "m", title: "Lang", remainingMin: 999, occDate: null }],
+    125, 25, 5, 15, 4); // 125/25 = 5 Fokusblöcke
+  eq(plan2.blocks.filter((b) => b.kind === "focus").length, 5, "planDay: 125/25 → 5 Fokusblöcke");
+  eq(plan2.blocks.filter((b) => b.kind === "long").length, 1, "planDay: eine lange Pause nach 4 Blöcken");
+  eq(plan2.blocks.filter((b) => b.kind === "short").length, 3, "planDay: drei kurze Pausen");
+
+  // planDay: Budget kleiner als eine Fokuslänge → ein kurzer Block über das Budget.
+  const plan3 = api.planDay([{ taskId: "t", moduleId: "m", title: "X", remainingMin: 999, occDate: null }], 10, 25, 5, 15, 4);
+  eq(plan3.blocks.length === 1 && plan3.blocks[0].durationMin === 10, true, "planDay: Budget < Fokuslänge → ein 10-Min-Block");
+  // planDay: leere Kandidaten → leerer Plan.
+  eq(api.planDay([], 180, 25, 5, 15, 4).blocks.length, 0, "planDay: ohne Kandidaten → leer");
+
+  // whatNowReason: Begründung für den Top-Kandidaten.
+  const wn = api.whatNowReason(cands);
+  eq(wn.taskId, "tB1", "whatNowReason: Top-Kandidat ist der erste");
+  eq(typeof wn.text === "string" && wn.text.includes("Übung 1"), true, "whatNowReason: Text nennt die Aufgabe");
+  eq(wn.reasons.some((r) => /Prüfung/.test(r)), true, "whatNowReason: nennt Prüfungsnähe");
+  eq(wn.reasons.some((r) => /Aufwand noch/.test(r)), true, "whatNowReason: nennt Restaufwand");
+  eq(api.whatNowReason([]), null, "whatNowReason: ohne Kandidaten → null");
+}
+
+/* ---- migrate v11: Aufwandsschätzung + Prüfungs-Modulzuordnung ---- */
+{
+  const d = api.migrate({
+    schemaVersion: 10,
+    modules: [{ id: "m1", name: "M", ects: 5, tasks: [
+      { id: "t1", text: "Mit Schätzung", date: "2026-11-23", estimateMin: 90 },
+      { id: "t2", text: "Krumme Schätzung", date: "2026-11-23", estimateMin: 99999 },
+      { id: "t3", text: "Ohne Schätzung", date: "2026-11-23" },
+    ] }],
+    events: [
+      { id: "e1", date: "2026-11-27", title: "Klausur", type: "exam", moduleId: "m1" },   // gültige Zuordnung
+      { id: "e2", date: "2026-11-27", title: "Fremd", type: "exam", moduleId: "nope" },    // ungültige → null
+      { id: "e3", date: "2026-11-27", title: "Ohne", type: "exam" },                       // fehlt → null
+    ],
+  });
+  const [t1, t2, t3] = d.modules[0].tasks;
+  eq(t1.estimateMin, 90, "migrate v11: gültige Schätzung bleibt");
+  eq(t2.estimateMin, null, "migrate v11: unplausible Schätzung → null");
+  eq(t3.estimateMin, null, "migrate v11: fehlende Schätzung → null (Default greift im Planer)");
+  eq(d.events[0].moduleId, "m1", "migrate v11: gültige Prüfungs-Modulzuordnung bleibt");
+  eq(d.events[1].moduleId, null, "migrate v11: unbekannte Modul-Id → null");
+  eq(d.events[2].moduleId, null, "migrate v11: fehlende Modul-Id → null");
 }
 
 /* ---- dueSoonSummary: In-App-Fälligkeits-Hinweis beim Öffnen (#6) ----

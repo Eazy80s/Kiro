@@ -1,19 +1,20 @@
 /* ============================================================
    Studien-Tracker — Daten im localStorage
-   Datenmodell (v10):
+   Datenmodell (v11):
      module:   { id, name, ects, grade, targetGrade, semester, completed, pinned,
                  collapsed, gradeComponents:[comp], links:[link], tasks:[task] }
      comp:     { id, label, grade, weight }        // Teilnote (gewichtet)
      link:     { id, label, url }                  // url immer http(s) (sanitizeUrl)
      task:     { id, text, done, date, startTime, endTime, url,
-                 repeat, repeatUntil, doneDates:[iso], subtasks:[subtask] }
+                 repeat, repeatUntil, doneDates:[iso], estimateMin, subtasks:[subtask] }
                  // startTime/endTime: "HH:MM" oder null; url: http(s) oder ""
                  // repeat: null|"daily"|"weekly"|"biweekly"|"monthly" (nur mit date);
                  // doneDates: erledigte Vorkommen (nur für Serien; sonst zählt done)
+                 // estimateMin: geschätzter Aufwand (Min.) oder null (für „Heute planen")
      subtask:  { id, text, done }
-     event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color, url }
+     event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color, url, moduleId }
                  // type: "exam" | "deadline" | "other"; color: null oder Hex (sanitizeHexColor);
-                 // url: http(s) oder "" (sanitizeUrl)
+                 // url: http(s) oder "" (sanitizeUrl); moduleId: Modul-Id oder null (Prüfungsnähe)
    Separate Keys: Pomodoro-Zeiten, Lernstatistik (inkl. Ziele & Lernzeit je Modul), Theme.
 
    Sicherheit: Nutzerdaten werden beim Rendern mit escapeHtml maskiert; die
@@ -33,7 +34,7 @@
 const STORAGE_KEY = "study-tracker-v1";
 
 // Current data schema version. Bump when the shape changes so migrations stay explicit.
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 let state = loadState();
 
@@ -137,6 +138,10 @@ function migrate(data) {
     // Optionaler Link (z. B. Online-Prüfung/Zoom). Immer härten: nur http(s)
     // überlebt (schützt Import/Sync), sonst leer.
     e.url = sanitizeUrl(e.url) || "";
+    // Optionale Modulzuordnung einer Prüfung (v11, für „Heute planen":
+    // Prüfungsnähe je Aufgabe). Nur gültige Modul-IDs behalten, sonst null.
+    if (e.moduleId === undefined) e.moduleId = null;
+    if (e.moduleId != null && !data.modules.some((m) => m && m.id === e.moduleId)) e.moduleId = null;
   });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
@@ -176,6 +181,9 @@ function migrate(data) {
       ));
       if (!t.date) { t.repeat = null; t.repeatUntil = null; t.doneDates = []; }
       if (!t.repeat) { t.repeatUntil = null; t.doneDates = []; } // doneDates nur für Serien
+      // Geschätzter Aufwand in Minuten (v11, für „Heute planen"). null = keine Schätzung.
+      if (t.estimateMin === undefined) t.estimateMin = null;
+      t.estimateMin = normalizeEstimate(t.estimateMin);
       // Entfernte Felder aufräumen (v9): kind (Vorlesungs-Typ) und pinned (ungenutzt).
       delete t.kind;
       delete t.pinned;
@@ -227,6 +235,9 @@ function makeTask(fields) {
     repeat: normalizeRepeat(f.repeat),
     repeatUntil: f.repeatUntil || null,
     doneDates: [],
+    // Geschätzter Aufwand in Minuten (für „Heute planen"). null = keine Schätzung
+    // → der Planer rechnet mit einem Default. 1…1440 Min.
+    estimateMin: normalizeEstimate(f.estimateMin),
     subtasks: [],
   };
 }
@@ -234,6 +245,13 @@ function makeTask(fields) {
 // Erlaubte Wiederholungsmuster (geteilt von Events und Aufgaben). Alles andere → null.
 function normalizeRepeat(raw) {
   return (raw === "daily" || raw === "weekly" || raw === "biweekly" || raw === "monthly") ? raw : null;
+}
+
+// Aufwandsschätzung in Minuten: positive, ganze Zahl 1…1440 oder null (= keine).
+function normalizeEstimate(raw) {
+  if (raw == null || raw === "") return null;
+  const n = Math.round(Number(raw));
+  return (Number.isFinite(n) && n >= 1 && n <= 1440) ? n : null;
 }
 
 /* ---------- Progress helpers ---------- */
@@ -503,6 +521,175 @@ function currentTaskOccurrence(t, todayStr) {
   const next = nextTaskOccurrence(t, todayStr);
   if (!next) return null; // Serie abgelaufen
   return { date: next, done: isTaskOccurrenceDone(t, next) };
+}
+
+/* ============================================================
+   „HEUTE PLANEN" — Tagesplan aus einem Zeitbudget (reine Logik)
+   ------------------------------------------------------------
+   Alles hier ist rein (nimmt Daten als Argumente, mutiert nichts, schreibt
+   nicht in den State) → sync-neutral und testbar. Der erzeugte Plan ist rein
+   abgeleitet; er wird NICHT in die Aufgaben zurückgeschrieben.
+
+   Pipeline:
+     planCandidates(...)  → offene, heute relevante Aufgaben, sortiert nach
+                            Prüfungsnähe → Fälligkeit → Rückstand, mit Metadaten.
+     planDay(...)         → verteilt die Kandidaten auf Pomodoro-Fokusblöcke
+                            innerhalb des Budgets, mit Pausen dazwischen.
+     whatNowReason(...)   → Begründungstext für den Top-Kandidaten.
+   ============================================================ */
+
+// Nächste Prüfung (type "exam") für ein Modul ab heute: bevorzugt eine Prüfung
+// mit moduleId == mId; gibt es keine zugeordnete, gilt (Fallback) die global
+// nächste Prüfung überhaupt. Rückgabe: Tage bis zur Prüfung (>=0) oder null.
+function nextExamDaysAway(events, mId, todayStr) {
+  let assigned = null, global = null;
+  (events || []).forEach((e) => {
+    if (!e || e.type !== "exam") return;
+    const occ = nextOccurrence(e, todayStr);
+    if (!occ) return;
+    const days = daysBetween(todayStr, occ);
+    if (days < 0) return;
+    if (e.moduleId && e.moduleId === mId) { if (assigned == null || days < assigned) assigned = days; }
+    if (global == null || days < global) global = days;
+  });
+  return assigned != null ? assigned : global;
+}
+
+// Offene, heute planbare Aufgaben einsammeln und sortieren.
+//   Planbar = Aufgaben aus angehefteten, nicht abgeschlossenen Modulen, die
+//   entweder (a) überfällig/heute/undatiert (einmalig) oder (b) deren nächstes
+//   offenes Vorkommen heute/überfällig ist (Serie) sind. Undatierte offene
+//   Aufgaben kommen dazu (für „womit fülle ich heute").
+//   Sortierung: Prüfungsnähe (näher = früher) → Fälligkeit (overdue<today<soon<
+//   undatiert) → Rückstand (mehr Restaufwand zuerst). Stabil über task.id.
+// Argumente werden übergeben → rein/testbar. `stats` nur lesend (perTask).
+function planCandidates(modules, events, stats, todayStr, defaultEstimate) {
+  const def = normalizeEstimate(defaultEstimate) || 45;
+  const perTask = (stats && stats.perTask) || {};
+  const DUE_RANK = { overdue: 0, today: 1, soon: 2, undated: 3, later: 4 };
+  const out = [];
+
+  (modules || []).forEach((m) => {
+    if (!m || !m.pinned || m.completed) return;
+    const examDays = nextExamDaysAway(events, m.id, todayStr);
+    (m.tasks || []).forEach((t) => {
+      // Erledigt-Status + maßgebliches Datum bestimmen.
+      let occDate, done;
+      if (t.date) {
+        const occ = currentTaskOccurrence(t, todayStr);
+        if (!occ) return;            // abgelaufene Serie
+        occDate = occ.date; done = occ.done;
+      } else {
+        occDate = null; done = !!t.done;
+      }
+      if (done) return;
+
+      // Fälligkeits-Kategorie.
+      let due;
+      if (occDate == null) due = "undated";
+      else {
+        const diff = daysBetween(todayStr, occDate);
+        due = diff < 0 ? "overdue" : diff === 0 ? "today" : diff <= 3 ? "soon" : "later";
+      }
+      // „later" (datiert, aber erst in >3 Tagen) gehört nicht in die Heute-Planung.
+      if (due === "later") return;
+
+      const estimateMin = normalizeEstimate(t.estimateMin) || def;
+      const studiedMin = Math.round((perTask[t.id] || 0) / 60);
+      const remainingMin = Math.max(0, estimateMin - studiedMin);
+      if (remainingMin <= 0) return; // Aufwand schon „abgearbeitet" → nicht einplanen
+
+      out.push({
+        moduleId: m.id, moduleName: m.name, taskId: t.id, task: t,
+        title: t.text, occDate, due, dueRank: DUE_RANK[due],
+        examDaysAway: examDays, estimateMin, studiedMin, remainingMin,
+        estimated: normalizeEstimate(t.estimateMin) != null,
+      });
+    });
+  });
+
+  out.sort((a, b) => {
+    // 1) Prüfungsnähe: kleinere Tage-Zahl zuerst; „keine Prüfung" ans Ende.
+    const ea = a.examDaysAway == null ? Infinity : a.examDaysAway;
+    const eb = b.examDaysAway == null ? Infinity : b.examDaysAway;
+    if (ea !== eb) return ea - eb;
+    // 2) Fälligkeit.
+    if (a.dueRank !== b.dueRank) return a.dueRank - b.dueRank;
+    // 3) Rückstand: mehr Restaufwand zuerst.
+    if (a.remainingMin !== b.remainingMin) return b.remainingMin - a.remainingMin;
+    // Stabil: über die Aufgaben-Id.
+    return String(a.taskId).localeCompare(String(b.taskId));
+  });
+  return out;
+}
+
+// Kandidaten auf Fokusblöcke innerhalb des Budgets verteilen, mit Pausen.
+//   budgetMin  = reine Fokus-Zeit, die geplant werden soll (Pausen zählen NICHT).
+//   focusMin / shortMin / longMin = Pomodoro-Längen.
+//   longEvery  = nach wie vielen Fokusblöcken eine lange Pause kommt (Standard 4).
+// Rückgabe: { blocks, focusPlannedMin, taskCount } mit Blöcken in Reihenfolge,
+//   jeder Block hat eine startOffsetMin (ab jetzt) für einen realistischen Zeitplan.
+//   Fokusblock: { kind:"focus", taskId, moduleId, title, durationMin, startOffsetMin, occDate }
+//   Pausenblock:{ kind:"short"|"long", durationMin, startOffsetMin }
+function planDay(candidates, budgetMin, focusMin, shortMin, longMin, longEvery) {
+  const F = Math.max(1, Math.round(focusMin || 25));
+  const S = Math.max(0, Math.round(shortMin || 5));
+  const L = Math.max(0, Math.round(longMin || 15));
+  const every = Math.max(1, Math.round(longEvery || 4));
+  const budget = Math.max(0, Math.round(budgetMin || 0));
+
+  const blocks = [];
+  let offset = 0;         // Minuten ab „jetzt" (inkl. Pausen → realistischer Plan)
+  let focusPlanned = 0;   // reine Fokusminuten (gegen das Budget)
+  let focusCount = 0;     // Anzahl Fokusblöcke (für Pausenrhythmus)
+  const tasksUsed = new Set();
+
+  // Restaufwand je Kandidat als Arbeitsvorrat (wird im Plan „verbraucht").
+  const queue = (candidates || []).map((c) => ({ c, left: c.remainingMin }));
+
+  for (const item of queue) {
+    while (item.left > 0 && focusPlanned + 1 <= budget) {
+      // Vor jedem Fokusblock (außer dem ersten) eine Pause einplanen.
+      if (focusCount > 0) {
+        const isLong = focusCount % every === 0;
+        const dur = isLong ? L : S;
+        if (dur > 0) { blocks.push({ kind: isLong ? "long" : "short", durationMin: dur, startOffsetMin: offset }); offset += dur; }
+      }
+      // Fokusblock: so lang wie der Rest-Aufwand, aber höchstens eine Fokuslänge
+      // und nicht über das Budget hinaus.
+      const dur = Math.min(F, item.left, budget - focusPlanned);
+      if (dur <= 0) break;
+      blocks.push({
+        kind: "focus", taskId: item.c.taskId, moduleId: item.c.moduleId,
+        title: item.c.title, occDate: item.c.occDate, durationMin: dur, startOffsetMin: offset,
+      });
+      offset += dur; focusPlanned += dur; focusCount++;
+      item.left -= dur;
+      tasksUsed.add(item.c.taskId);
+    }
+    if (focusPlanned >= budget) break;
+  }
+  return { blocks, focusPlannedMin: focusPlanned, taskCount: tasksUsed.size };
+}
+
+// Begründungstext für den Top-Kandidaten („Was jetzt?"). Rein (gibt Bausteine +
+// fertigen Satz zurück, damit die UI frei formatieren kann).
+function whatNowReason(candidates) {
+  const c = (candidates || [])[0];
+  if (!c) return null;
+  const parts = [];
+  if (c.examDaysAway != null) {
+    parts.push(c.examDaysAway === 0 ? "Prüfung heute" : c.examDaysAway === 1 ? "Prüfung morgen" : `Prüfung in ${c.examDaysAway} Tagen`);
+  }
+  if (c.due === "overdue") parts.push("überfällig");
+  else if (c.due === "today") parts.push("heute fällig");
+  else if (c.due === "soon") parts.push("bald fällig");
+  parts.push(`Aufwand noch ${c.remainingMin} Min.${c.estimated ? "" : " (geschätzt)"}`);
+  return {
+    taskId: c.taskId, moduleId: c.moduleId, title: c.title, moduleName: c.moduleName,
+    remainingMin: c.remainingMin, reasons: parts,
+    text: `Fang mit „${c.title}“ aus ${c.moduleName} an — ${parts.join(", ")}.`,
+  };
 }
 
 /* ---------- German grade helpers (scale 1.0–5.0; passed if ≤ 4.0) ---------- */
@@ -942,6 +1129,7 @@ function renderDashboard() {
   applyDashCols();
   renderPinnedModules();
   renderOverdue();
+  renderPlanDay();
   renderPinnedTasks();
   renderAgenda();
   renderSemesterStats();
@@ -1130,6 +1318,138 @@ function renderPinnedModules() {
       ${linksHtml}`;
     wrap.appendChild(div);
   });
+}
+
+/* ---------- „Heute planen" (Tagesplan aus Zeitbudget) ----------
+   Rein abgeleitet & flüchtig: der Plan wird NICHT gespeichert. Aktiv ist er,
+   solange planActiveBudget != null (bis „Zurücksetzen" oder Reload). Er wird bei
+   jedem Dashboard-Render neu berechnet, damit er aktuell bleibt (z. B. wenn eine
+   Aufgabe abgehakt wird). */
+let planActiveBudget = null; // Minuten; null = kein aktiver Plan
+
+function planInputs() {
+  // Pomodoro-Längen (eigene Einstellungen) als Blocklängen verwenden.
+  return {
+    focus: (pomoMinutes && pomoMinutes.focus) || POMO_DEFAULTS.focus,
+    short: (pomoMinutes && pomoMinutes.short) || POMO_DEFAULTS.short,
+    long: (pomoMinutes && pomoMinutes.long) || POMO_DEFAULTS.long,
+  };
+}
+
+function renderPlanDay() {
+  const result = document.getElementById("planday-result");
+  const card = document.getElementById("whatnow-card");
+  const clearBtn = document.getElementById("planday-clear");
+  if (!result || !card) return;
+
+  if (planActiveBudget == null) {
+    result.innerHTML = ""; card.hidden = true; if (clearBtn) clearBtn.hidden = true;
+    return;
+  }
+  if (clearBtn) clearBtn.hidden = false;
+
+  const today = todayIso();
+  const candidates = planCandidates(state.modules, state.events, stats, today, 45);
+  const what = whatNowReason(candidates);
+
+  // „Was jetzt?"-Karte.
+  if (what) {
+    card.hidden = false;
+    card.innerHTML =
+      `<div class="whatnow-lead">👉 Was jetzt?</div>
+       <div class="whatnow-text">${escapeHtml(what.text)}</div>
+       <button type="button" class="primary-btn whatnow-start" data-start-module="${escapeHtml(what.moduleId)}" data-start-task="${escapeHtml(what.taskId)}">${icon("clock")} Fokus starten</button>`;
+    const sb = card.querySelector(".whatnow-start");
+    if (sb) sb.addEventListener("click", () => startFocusFor(sb.dataset.startModule, sb.dataset.startTask));
+  } else {
+    card.hidden = true;
+  }
+
+  if (!candidates.length) {
+    result.innerHTML = `<p class="empty-state illustrated">Keine offenen Aufgaben in angehefteten Modulen für heute. Hefte ein Modul an oder terminiere eine Aufgabe.</p>`;
+    return;
+  }
+
+  const inp = planInputs();
+  const plan = planDay(candidates, planActiveBudget, inp.focus, inp.short, inp.long, 4);
+
+  if (!plan.blocks.length) {
+    result.innerHTML = `<p class="empty-state">Budget zu klein für einen Fokus-Block (mind. ${inp.focus} Min.).</p>`;
+    return;
+  }
+
+  // Blocks rendern: Fokusblöcke mit „▶ Fokus starten", Pausen als dezente Zeilen.
+  const fmtClock = (offsetMin) => {
+    const d = new Date(Date.now() + offsetMin * 60000);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  let focusNo = 0;
+  const rows = plan.blocks.map((b) => {
+    const clock = fmtClock(b.startOffsetMin);
+    if (b.kind === "focus") {
+      focusNo++;
+      return `<li class="plan-block plan-focus">
+        <span class="plan-time">${clock}</span>
+        <span class="plan-body">
+          <span class="plan-no">#${focusNo}</span>
+          <span class="plan-title">${escapeHtml(b.title)}</span>
+          <span class="plan-dur muted">${b.durationMin} Min.</span>
+        </span>
+        <button type="button" class="primary-btn plan-start" data-start-module="${escapeHtml(b.moduleId)}" data-start-task="${escapeHtml(b.taskId)}" title="Fokus für diese Aufgabe starten">${icon("clock")} Fokus starten</button>
+      </li>`;
+    }
+    const label = b.kind === "long" ? "Lange Pause" : "Kurze Pause";
+    return `<li class="plan-block plan-break">
+      <span class="plan-time">${clock}</span>
+      <span class="plan-body muted">☕ ${label} · ${b.durationMin} Min.</span>
+    </li>`;
+  }).join("");
+
+  const h = Math.floor(plan.focusPlannedMin / 60), mm = plan.focusPlannedMin % 60;
+  const sumLabel = (h ? `${h} Std. ` : "") + `${mm} Min.`;
+  result.innerHTML =
+    `<p class="plan-summary muted">${plan.taskCount} Aufgabe(n) · ${sumLabel} Fokus geplant.</p>
+     <ul class="plan-list">${rows}</ul>`;
+
+  result.querySelectorAll(".plan-start").forEach((btn) => {
+    btn.addEventListener("click", () => startFocusFor(btn.dataset.startModule, btn.dataset.startTask));
+  });
+}
+
+// „▶ Fokus starten": belegt den BESTEHENDEN Pomodoro-Timer mit Modul/Aufgabe,
+// schaltet in den Fokus-Modus, wechselt in den Pomodoro-Tab und startet. Kein
+// zweiter Timer. Fällt sanft zurück, falls Modul/Aufgabe nicht mehr existieren.
+function startFocusFor(moduleId, taskId) {
+  const mod = state.modules.find((m) => m.id === moduleId);
+  // Modul muss „In Bearbeitung" (angeheftet, offen) sein, damit es im Timer-
+  // Dropdown steht. Sonst ohne Modulzuordnung starten.
+  pomoModuleId = (mod && mod.pinned && !mod.completed) ? moduleId : "";
+  // Nur offene Aufgaben stehen im Task-Dropdown.
+  const task = mod && mod.tasks.find((t) => t.id === taskId);
+  const occ = task && task.date ? currentTaskOccurrence(task, todayIso()) : null;
+  const taskOpen = task && (task.date ? (occ && !occ.done) : !task.done);
+  pomoTaskId = (pomoModuleId && taskOpen) ? taskId : "";
+
+  switchTab("pomodoro");
+  // Dropdowns auf die gewünschte Auswahl spiegeln. fillPomoModuleSelect/
+  // fillPomoTaskSelect erhalten die bereits gesetzten pomoModuleId/pomoTaskId.
+  const wantTask = pomoTaskId;
+  fillPomoModuleSelect();
+  const modSel = document.getElementById("pomo-module");
+  if (modSel) { modSel.value = pomoModuleId; pomoModuleId = modSel.value; }
+  fillPomoTaskSelect();
+  const taskSel = document.getElementById("pomo-task");
+  if (taskSel) {
+    // Nur setzen, wenn die gewünschte Aufgabe in der (offenen) Liste steht.
+    const has = Array.prototype.some.call(taskSel.options, (o) => o.value === wantTask);
+    taskSel.value = has ? wantTask : "";
+    pomoTaskId = taskSel.value;
+  }
+
+  // In den Fokus-Modus und starten (nur, wenn nicht schon ein Lauf aktiv ist).
+  if (pomoMode !== "focus") pomoSetMode("focus");
+  if (!pomoTimerId) pomoStart();
+  showSnackbar(task ? `Fokus gestartet: „${task.text}".` : "Fokus gestartet.");
 }
 
 // Überfällige, offene Aufgaben (Punkt 5)
@@ -2107,6 +2427,21 @@ function setDashCols(n) {
 if (dashCol1) dashCol1.addEventListener("click", () => setDashCols(1));
 if (dashCol2) dashCol2.addEventListener("click", () => setDashCols(2));
 
+// „Heute planen": Budget übernehmen → Plan (abgeleitet) anzeigen.
+const planDayForm = document.getElementById("planday-form");
+if (planDayForm) {
+  planDayForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const raw = parseInt(document.getElementById("planday-budget").value, 10);
+    const budget = (Number.isFinite(raw) && raw >= 15 && raw <= 960) ? raw : null;
+    if (budget == null) { showSnackbar("Bitte ein Budget zwischen 15 und 960 Minuten angeben."); return; }
+    planActiveBudget = budget;
+    renderPlanDay();
+  });
+  const clearBtn = document.getElementById("planday-clear");
+  if (clearBtn) clearBtn.addEventListener("click", () => { planActiveBudget = null; renderPlanDay(); });
+}
+
 // Schnelleingabe im Dashboard: Aufgabe für HEUTE direkt anlegen (Fokus heute).
 const quickTaskForm = document.getElementById("quick-task-form");
 if (quickTaskForm) {
@@ -2134,14 +2469,24 @@ if (quickTaskForm) {
 const entryKindSel = document.getElementById("entry-kind");
 function fillEntryModuleSelect() {
   const sel = document.getElementById("entry-module");
-  if (!sel) return;
-  const prev = sel.value;
-  if (!state.modules.length) {
-    sel.innerHTML = `<option value="">Kein Modul — erst eins anlegen</option>`;
-  } else {
+  if (sel) {
+    const prev = sel.value;
+    if (!state.modules.length) {
+      sel.innerHTML = `<option value="">Kein Modul — erst eins anlegen</option>`;
+    } else {
+      const ordered = state.modules.slice().sort((a, b) => (b.pinned - a.pinned) || (a.completed - b.completed));
+      sel.innerHTML = ordered.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+      if (ordered.some((m) => m.id === prev)) sel.value = prev;
+    }
+  }
+  // Prüfungs-Modulzuordnung (optional) — für „Heute planen": Prüfungsnähe je Modul.
+  const esel = document.getElementById("entry-exam-module");
+  if (esel) {
+    const prev = esel.value;
     const ordered = state.modules.slice().sort((a, b) => (b.pinned - a.pinned) || (a.completed - b.completed));
-    sel.innerHTML = ordered.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
-    if (ordered.some((m) => m.id === prev)) sel.value = prev;
+    esel.innerHTML = `<option value="">Ohne Modulzuordnung</option>` +
+      ordered.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+    if (ordered.some((m) => m.id === prev)) esel.value = prev;
   }
 }
 // Felder je nach Art ein-/ausblenden.
@@ -2150,6 +2495,7 @@ function updateEntryFormMode() {
   const isTask = kind === "task";
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
   show("entry-module", isTask);
+  show("entry-exam-module", !isTask); // Prüfungs-Modulzuordnung nur für Prüfungen
   // Wiederholung + Serienende gelten jetzt für BEIDE Arten (Aufgaben wie Prüfungen).
   show("entry-repeat", true);
   show("entry-repeat-until", true);
@@ -2181,6 +2527,8 @@ function startEditEvent(ev) {
   document.getElementById("entry-url").value = ev.url || "";
   document.getElementById("entry-repeat").value = ev.repeat || "";
   document.getElementById("entry-repeat-until").value = ev.repeatUntil || "";
+  const examMod = document.getElementById("entry-exam-module");
+  if (examMod) examMod.value = ev.moduleId || "";
   const colorOn = document.getElementById("entry-color-on");
   const colorInp = document.getElementById("entry-color");
   colorOn.checked = !!ev.color;
@@ -2227,17 +2575,20 @@ if (entryForm) entryForm.addEventListener("submit", (e) => {
     const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
     const colorOn = document.getElementById("entry-color-on").checked;
     const color = colorOn ? sanitizeHexColor(document.getElementById("entry-color").value) : null;
+    // Optionale Modulzuordnung der Prüfung (nur gültige Modul-Id behalten).
+    const emRaw = (document.getElementById("entry-exam-module") || {}).value || "";
+    const moduleId = state.modules.some((m) => m.id === emRaw) ? emRaw : null;
     if (editingEventId) {
       // Bestehenden Termin aktualisieren (Bearbeiten-Modus).
       const ev = state.events.find((x) => x.id === editingEventId);
       if (ev) {
         ev.date = date; ev.startTime = startTime; ev.endTime = endTime;
         ev.title = title; ev.url = url;
-        ev.repeat = repeat; ev.repeatUntil = repeatUntil; ev.color = color;
+        ev.repeat = repeat; ev.repeatUntil = repeatUntil; ev.color = color; ev.moduleId = moduleId;
       }
       resetEntryFormMode();
     } else {
-      state.events.push({ id: uid(), date, startTime, endTime, title, type: "exam", repeat, repeatUntil, color, url });
+      state.events.push({ id: uid(), date, startTime, endTime, title, type: "exam", repeat, repeatUntil, color, url, moduleId });
     }
   }
   saveState();
@@ -2252,6 +2603,8 @@ if (entryForm) entryForm.addEventListener("submit", (e) => {
   document.getElementById("entry-url").value = "";
   document.getElementById("entry-repeat").value = "";
   document.getElementById("entry-repeat-until").value = "";
+  const examModReset = document.getElementById("entry-exam-module");
+  if (examModReset) examModReset.value = "";
   document.getElementById("entry-color-on").checked = false;
   renderCalendar();
   renderModules();
@@ -2700,6 +3053,9 @@ function renderModuleCard(m) {
         <label class="task-opt" title="Serienende (optional)">Serie bis
           <input type="date" data-task-repeat-until value="${t.repeatUntil || ""}" ${t.repeat ? "" : "disabled"} aria-label="Serienende von ${escapeHtml(t.text)}" />
         </label>
+        <label class="task-opt" title="Geschätzter Aufwand für „Heute planen“ (leer = Standard 45 Min.)">Aufwand (Min.)
+          <input type="number" data-task-estimate min="1" max="1440" step="5" value="${t.estimateMin || ""}" placeholder="45" aria-label="Geschätzter Aufwand von ${escapeHtml(t.text)} in Minuten" />
+        </label>
       </div>
       <ul class="subtask-list"></ul>
       <form class="add-subtask-form"><input type="text" id="add-subtask-${t.id}" placeholder="Teilaufgabe hinzufügen …" required /><button type="submit" class="secondary-btn">+</button></form>`;
@@ -2769,6 +3125,11 @@ function renderModuleCard(m) {
       t.repeatUntil = t.repeat ? (ev.target.value || null) : null;
       saveState(); renderModules();
     });
+    // Aufwandsschätzung (Min.) für „Heute planen". Leer → null (= Default im Planer).
+    li.querySelector("[data-task-estimate]").addEventListener("change", (ev) => {
+      t.estimateMin = normalizeEstimate(ev.target.value);
+      saveState(); renderModules();
+    });
     li.querySelector("[data-del-task]").addEventListener("click", () => {
       const idx = m.tasks.indexOf(t);
       m.tasks = m.tasks.filter((x) => x.id !== t.id);
@@ -2787,6 +3148,7 @@ function renderModuleCard(m) {
         startTime: t.startTime, endTime: t.endTime, url: t.url,
         // Datum wird nicht übernommen → Serie ergibt keinen Sinn, Kopie startet einmalig.
         repeat: null, repeatUntil: null, doneDates: [],
+        estimateMin: t.estimateMin || null,
         subtasks: (t.subtasks || []).map((s) => ({ id: uid(), text: s.text, done: false })),
       };
       const idx = m.tasks.indexOf(t);
@@ -4803,9 +5165,10 @@ if (typeof module !== "undefined" && module.exports) {
     parseIcs, buildIcs, ectsProgress, easterSunday,
     germanHolidays, holidayName, normalizeTime, timeRange, minutesOfTime,
     itemSpan, layoutOverlaps, makeTask, buildHeatmap, nextModuleDue, dueStatusAt,
-    dueSoonSummary, normalizeRepeat,
+    dueSoonSummary, normalizeRepeat, normalizeEstimate,
     taskOccursOn, nextTaskOccurrence, isTaskOccurrenceDone, setTaskOccurrenceDone,
     currentTaskOccurrence,
+    nextExamDaysAway, planCandidates, planDay, whatNowReason,
   };
 }
 

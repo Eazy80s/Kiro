@@ -222,6 +222,34 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
 .due-notice-item.due-today .due-notice-when { color: var(--warn); font-weight: 600; }
 .due-notice-more { font-size: 0.8rem; color: var(--muted); }
 
+/* „Heute planen" — Tagesplan aus Zeitbudget */
+.planday-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.planday-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.planday-controls input[type="number"] { width: 90px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; }
+.planday-hint { font-size: 0.82rem; }
+/* „Was jetzt?"-Karte: Hervorhebung des Top-Vorschlags */
+.whatnow-card {
+  background: linear-gradient(135deg, var(--accent), #7c3aed); color: #fff;
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow-md);
+}
+.whatnow-card[hidden] { display: none; }
+.whatnow-lead { font-size: 0.82rem; opacity: 0.9; margin-bottom: 4px; }
+.whatnow-text { font-weight: 600; margin-bottom: 10px; line-height: 1.4; }
+.whatnow-start { background: #fff !important; color: var(--accent) !important; }
+.whatnow-start:hover { background: #f1f3f5 !important; }
+/* Plan-Liste: Fokus-Blöcke + Pausen */
+.planday-result .plan-summary { margin: 0 0 8px; font-size: 0.84rem; }
+.plan-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plan-block { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; }
+.plan-focus { background: var(--surface-2); }
+.plan-break { padding: 4px 10px; font-size: 0.82rem; }
+.plan-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.82rem; min-width: 42px; }
+.plan-body { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plan-no { flex: 0 0 auto; font-weight: 700; color: var(--accent); font-size: 0.82rem; }
+.plan-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-dur { flex: 0 0 auto; font-size: 0.78rem; }
+.plan-start { flex: 0 0 auto; padding: 6px 10px !important; font-size: 0.8rem !important; }
+
 /* Pomodoro */
 .pomodoro-card { padding: 15px; text-align: center; }
 .pomo-mode-tabs { display: inline-flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 999px; margin-bottom: 14px; }

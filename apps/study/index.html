@@ -96,6 +96,23 @@
           <div id="overdue-list"></div>
         </section>
 
+        <section class="dash-block" id="planday-block">
+          <h2>Heute planen</h2>
+          <form id="planday-form" class="planday-form">
+            <label for="planday-budget" class="muted">Zeitbudget heute</label>
+            <div class="planday-controls">
+              <input type="number" id="planday-budget" min="15" max="960" step="15" value="180"
+                     inputmode="numeric" aria-label="Zeitbudget in Minuten" />
+              <span class="muted">Min.</span>
+              <button type="submit" class="primary-btn">Plan erstellen</button>
+              <button type="button" id="planday-clear" class="ghost-btn" hidden>Zurücksetzen</button>
+            </div>
+            <p class="muted planday-hint">Ordnet offene Aufgaben (Prüfungsnähe → Fälligkeit → Rückstand) zu Fokus-Blöcken.</p>
+          </form>
+          <div id="whatnow-card" class="whatnow-card" hidden></div>
+          <div id="planday-result" class="planday-result"></div>
+        </section>
+
         <section class="dash-block">
           <h2>Fokus heute</h2>
           <form id="quick-task-form" class="quick-task-form">
@@ -165,6 +182,8 @@
           <input type="url" id="entry-url" placeholder="Link (optional)" aria-label="Link" />
           <!-- Nur für Aufgaben: Modulzuordnung -->
           <select id="entry-module" aria-label="Modul (für Aufgaben)" title="Modul"></select>
+          <!-- Nur für Prüfungen: optionale Modulzuordnung (für „Heute planen“: Prüfungsnähe) -->
+          <select id="entry-exam-module" aria-label="Modul der Prüfung (optional)" title="Modul der Prüfung" hidden></select>
           <!-- Nur für Prüfungen: Wiederholung, Serienende, Farbe -->
           <select id="entry-repeat" title="Wiederholung" hidden>
             <option value="">Keine Wiederholung</option>

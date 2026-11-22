@@ -446,6 +446,16 @@
   <!-- Snackbar für „Rückgängig“ -->
   <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
 
+  <!-- Modal-Dialog (ersetzt native confirm/alert/prompt). Wird per JS befüllt. -->
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div id="modal-box" class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title" class="modal-title"></h2>
+      <p id="modal-message" class="modal-message"></p>
+      <input type="text" id="modal-input" class="modal-input" hidden />
+      <div id="modal-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
   <!-- Supabase-Client (für Geräte-Sync). Lädt aus dem Netz; ohne Netz läuft die App lokal weiter. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="../shared/supabase-config.js"></script>

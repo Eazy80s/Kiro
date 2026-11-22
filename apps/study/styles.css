@@ -645,6 +645,38 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 }
 .snack-undo:hover { color: #bfdbfe; text-decoration: underline; }
 
+/* Modal-Dialog (ersetzt native confirm/alert/prompt) */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 20px; backdrop-filter: blur(2px);
+  animation: modal-fade 0.15s ease;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-box {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 420px; padding: 22px;
+  animation: modal-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.modal-title { font-size: 1.1rem; font-weight: 650; margin-bottom: 8px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.modal-message { color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; white-space: pre-line; }
+.modal-input {
+  width: 100%; padding: 10px 12px; margin-bottom: 16px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--text); font-size: 0.95rem; font-family: inherit;
+}
+.modal-input[hidden] { display: none; }
+.modal-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay, .modal-box { animation: none; }
+}
+
 /* ============================================================
    Zweites Verbesserungs-Paket
    ============================================================ */

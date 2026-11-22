@@ -1678,7 +1678,7 @@ function makeDraggableCalEvent(ev) {
 
 // Verschiebt einen Kalendereintrag auf ein neues Datum (und optional Startstunde).
 // Bei gesetzter Stunde wird die bisherige Dauer (Von–Bis) beibehalten.
-function moveCalItem(kind, id, fromDate, toDate, toHour) {
+async function moveCalItem(kind, id, fromDate, toDate, toHour) {
   const applyHour = (obj) => {
     if (toHour == null) return;
     const oldStart = minutesOfTime(obj.startTime);
@@ -1701,10 +1701,10 @@ function moveCalItem(kind, id, fromDate, toDate, toHour) {
   if (e.repeat) {
     // Wiederkehrende Einträge: ganze Serie verschieben (Startdatum), mit Rückfrage.
     const delta = daysBetween(e.date, toDate) - daysBetween(e.date, fromDate);
-    const ok = confirm(
+    const ok = await showConfirm(
       `„${e.title}“ ist eine wiederkehrende Serie.\n\n` +
-      `OK: ganze Serie um ${delta > 0 ? "+" : ""}${delta} Tag(e) verschieben.\n` +
-      `Abbrechen: nichts ändern.`
+      `Verschieben: ganze Serie um ${delta > 0 ? "+" : ""}${delta} Tag(e).`,
+      { title: "Serie verschieben", okLabel: "Verschieben" }
     );
     if (!ok) { renderCalendar(); return; }
     const base = new Date(e.date + "T00:00:00");
@@ -2473,8 +2473,8 @@ function renderModuleCard(m) {
   card.querySelector("[data-pin-module]").addEventListener("click", () => {
     m.pinned = !m.pinned; saveState(); renderModules();
   });
-  card.querySelector("[data-edit-module]").addEventListener("click", () => {
-    const neu = prompt("Modulname bearbeiten:", m.name);
+  card.querySelector("[data-edit-module]").addEventListener("click", async () => {
+    const neu = await showPrompt("Neuer Name für das Modul:", m.name, { title: "Modul umbenennen" });
     if (neu === null) return;              // abgebrochen
     const name = neu.trim();
     if (!name) return;                     // leer nicht übernehmen
@@ -2571,13 +2571,13 @@ document.getElementById("import-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (ev) => {
+  reader.onload = async (ev) => {
     try {
       const parsed = JSON.parse(ev.target.result);
       if (!parsed || !Array.isArray(parsed.modules) || !Array.isArray(parsed.events)) {
         throw new Error("Die Datei sieht nicht wie eine Studien-Tracker-Sicherung aus.");
       }
-      if (!confirm("Beim Import werden deine aktuellen Daten ersetzt. Fortfahren?")) return;
+      if (!(await showConfirm("Beim Import werden deine aktuellen Daten ersetzt. Fortfahren?", { title: "Daten importieren", okLabel: "Importieren" }))) return;
       state = migrate(parsed);
       saveState();
       // Restore study stats and timer settings if present in the backup.
@@ -2613,8 +2613,8 @@ document.getElementById("import-file").addEventListener("change", (e) => {
   e.target.value = ""; // allow re-importing the same file
 });
 
-document.getElementById("reset-btn").addEventListener("click", () => {
-  if (!confirm("ALLE Daten dauerhaft löschen? Das kann nicht rückgängig gemacht werden.")) return;
+document.getElementById("reset-btn").addEventListener("click", async () => {
+  if (!(await showConfirm("ALLE Daten dauerhaft löschen? Das kann nicht rückgängig gemacht werden.", { title: "Alle Daten löschen", okLabel: "Endgültig löschen", danger: true }))) return;
   state = migrate({ modules: [], events: [] });
   saveState();
   stats = { sessions: 0, daily: {}, perModule: {}, perTask: {}, goals: { ...DEFAULT_GOALS } };
@@ -2778,7 +2778,7 @@ function pomoTick() {
       osc.start();
       setTimeout(() => { osc.stop(); ctx.close(); }, 450);
     } catch (e) {}
-    alert(`${POMO_LABELS[pomoMode]} beendet!`);
+    showSnackbar(`${POMO_LABELS[pomoMode]} beendet!`);
     pomoSetMode(pomoMode === "focus" ? "short" : "focus");
     return;
   }
@@ -3538,6 +3538,116 @@ function showSnackbar(message, undoFn) {
   snackTimer = setTimeout(() => bar.classList.remove("show"), hideAfter);
 }
 
+/* ---------- Modal-Dialoge (ersetzen native confirm/alert/prompt) ----------
+   Promise-basiert, zum Design passend, mit Fokus-Falle, Esc-Schließen und
+   Fokus-Rückgabe an das auslösende Element. */
+let modalPrevFocus = null;
+
+function openModal({ title, message, input, buttons }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("modal-overlay");
+    const box = document.getElementById("modal-box");
+    const titleEl = document.getElementById("modal-title");
+    const msgEl = document.getElementById("modal-message");
+    const inputEl = document.getElementById("modal-input");
+    const actionsEl = document.getElementById("modal-actions");
+    // Fallback, falls das Modal-Markup fehlt (z. B. in Tests): nicht hängenbleiben.
+    if (!overlay || !box || !actionsEl) { resolve(null); return; }
+
+    modalPrevFocus = document.activeElement;
+    titleEl.textContent = title || "";
+    msgEl.textContent = message || "";
+    msgEl.hidden = !message;
+
+    if (input) {
+      inputEl.hidden = false;
+      inputEl.value = input.value || "";
+      inputEl.placeholder = input.placeholder || "";
+    } else {
+      inputEl.hidden = true;
+      inputEl.value = "";
+    }
+
+    actionsEl.innerHTML = "";
+    function close(result) {
+      overlay.hidden = true;
+      document.removeEventListener("keydown", onKey, true);
+      overlay.removeEventListener("mousedown", onBackdrop);
+      if (modalPrevFocus && modalPrevFocus.focus) { try { modalPrevFocus.focus(); } catch (e) {} }
+      resolve(result);
+    }
+
+    (buttons || []).forEach((b) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = b.kind === "primary" ? "primary-btn"
+        : b.kind === "danger" ? "danger-btn" : "secondary-btn";
+      btn.textContent = b.label;
+      btn.addEventListener("click", () => close(b.value !== undefined ? b.value : (input ? inputEl.value : true)));
+      actionsEl.appendChild(btn);
+    });
+
+    // Fokus-Falle: Tab bleibt innerhalb des Dialogs; Esc bricht ab.
+    function focusables() {
+      return Array.prototype.slice.call(
+        box.querySelectorAll('button, [href], input:not([hidden]), select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.disabled && el.offsetParent !== null);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); close(input ? null : false); return; }
+      if (e.key === "Enter" && (input || e.target.tagName === "INPUT")) {
+        // Enter bestätigt die primäre Aktion (letzter Button ist i. d. R. primär).
+        const prim = actionsEl.querySelector(".primary-btn") || actionsEl.lastChild;
+        if (prim) { e.preventDefault(); prim.click(); }
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const f = focusables();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    function onBackdrop(e) { if (e.target === overlay) close(input ? null : false); }
+
+    overlay.hidden = false;
+    document.addEventListener("keydown", onKey, true);
+    overlay.addEventListener("mousedown", onBackdrop);
+    // Startfokus: Eingabefeld, sonst die primäre Aktion.
+    requestAnimationFrame(() => {
+      try { (input ? inputEl : (actionsEl.querySelector(".primary-btn") || actionsEl.firstChild)).focus(); } catch (e) {}
+    });
+  });
+}
+
+// confirm(): true = bestätigt, false = abgebrochen.
+function showConfirm(message, { title = "Bestätigen", okLabel = "OK", cancelLabel = "Abbrechen", danger = false } = {}) {
+  return openModal({
+    title, message,
+    buttons: [
+      { label: cancelLabel, kind: "secondary", value: false },
+      { label: okLabel, kind: danger ? "danger" : "primary", value: true },
+    ],
+  });
+}
+
+// alert(): schließt mit OK.
+function showAlert(message, { title = "Hinweis", okLabel = "OK" } = {}) {
+  return openModal({ title, message, buttons: [{ label: okLabel, kind: "primary", value: true }] });
+}
+
+// prompt(): liefert den Text oder null bei Abbruch.
+function showPrompt(message, defaultValue = "", { title = "Eingabe", okLabel = "OK", cancelLabel = "Abbrechen", placeholder = "" } = {}) {
+  return openModal({
+    title, message,
+    input: { value: defaultValue, placeholder },
+    buttons: [
+      { label: cancelLabel, kind: "secondary", value: null },
+      { label: okLabel, kind: "primary" }, // Wert = Eingabefeld-Inhalt
+    ],
+  });
+}
+
 /* ---------- SVG-Icons (Punkt 1) — einheitlich statt Emojis ---------- */
 // Schlanke Inline-SVGs (currentColor), 1em groß, dekorativ (aria-hidden).
 const ICONS = {
@@ -3811,12 +3921,13 @@ async function pullAndMerge() {
         const e = (s && Array.isArray(s.events)) ? s.events.length : 0;
         return `${m} Module, ${e} Termine`;
       };
-      const ok = confirm(
-        "Konflikt erkannt: lokaler Stand und Server-Stand unterscheiden sich.\n\n" +
+      const ok = await showConfirm(
+        "Lokaler Stand und Server-Stand unterscheiden sich.\n\n" +
         `• Server:  ${countOf(remote)}\n` +
         `• Dieses Gerät:  ${countOf(state)}\n\n` +
-        "• OK: Server-Stand übernehmen (dein lokaler Stand wird als Sicherung behalten).\n" +
-        "• Abbrechen: deinen lokalen Stand behalten und hochladen."
+        'Server übernehmen: der Server-Stand wird geladen (dein lokaler Stand bleibt als Sicherung).\n' +
+        'Lokalen behalten: dein Gerät gewinnt und wird hochgeladen.',
+        { title: "Sync-Konflikt", okLabel: "Server übernehmen", cancelLabel: "Lokalen behalten" }
       );
       if (ok) { applyRemote(remote); lastSyncedRemoteTs = remoteTs; setSyncStatus("Server-Stand übernommen · lokale Sicherung erstellt."); }
       else { await uploadState(); lastSyncedRemoteTs = state.updatedAt || Date.now(); setSyncStatus("Lokalen Stand behalten und hochgeladen."); }
@@ -3838,11 +3949,11 @@ async function pullAndMerge() {
 }
 
 // Lokale Sicherung (vor letztem Überschreiben) wiederherstellen.
-function restoreSyncBackup() {
+async function restoreSyncBackup() {
   let snap = null;
   try { snap = JSON.parse(localStorage.getItem(SYNC_BACKUP_KEY) || "null"); } catch (e) {}
   if (!snap || !snap.data) { setSyncStatus("Keine Sicherung vorhanden."); return; }
-  if (!confirm(`Lokale Sicherung vom ${new Date(snap.at).toLocaleString("de-DE")} wiederherstellen? Der aktuelle Stand wird ersetzt.`)) return;
+  if (!(await showConfirm(`Lokale Sicherung vom ${new Date(snap.at).toLocaleString("de-DE")} wiederherstellen? Der aktuelle Stand wird ersetzt.`, { title: "Sicherung wiederherstellen", okLabel: "Wiederherstellen" }))) return;
   applyRemote(snap.data);
   saveState(); // als neuesten Stand markieren → wird beim nächsten Sync hochgeladen
   setSyncStatus("Lokale Sicherung wiederhergestellt.");

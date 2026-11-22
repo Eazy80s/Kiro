@@ -3,20 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Studien-Tracker</title>
-
-  <!-- Installierbare Web-App (zum Home-Bildschirm hinzufügen auf dem iPhone) -->
-  <link rel="manifest" href="manifest.webmanifest" />
+  <title>Apps</title>
   <meta name="theme-color" content="#4f46e5" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Studien-Tracker" />
-  <link rel="apple-touch-icon" href="icon-180.png" />
-  <link rel="icon" type="image/svg+xml" href="icon.svg" />
-
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="apps/study/icon.svg" />
+  <link rel="apple-touch-icon" href="apps/study/icon-180.png" />
   <script>
-    // Theme früh setzen, damit es beim Laden nicht kurz hell aufblitzt.
+    // Theme früh setzen (gleicher Schlüssel wie die Apps), damit es nicht hell aufblitzt.
     (function () {
       try {
         var t = localStorage.getItem("study-tracker-theme") || "auto";
@@ -26,443 +18,70 @@
       } catch (e) {}
     })();
   </script>
+  <style>
+    :root {
+      --bg: #ffffff; --surface: #ffffff; --surface-2: #f1f3f5;
+      --text: #1a1a1a; --muted: #6b7280; --accent: #4f46e5; --accent-hover: #4338ca;
+      --border: #e5e7eb; --radius: 16px;
+      --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.07);
+      --shadow-lg: 0 10px 30px rgba(79, 70, 229, 0.18);
+    }
+    [data-theme="dark"] {
+      --bg: #0f172a; --surface: #1e293b; --surface-2: #334155;
+      --text: #e2e8f0; --muted: #94a3b8; --accent: #818cf8; --accent-hover: #6366f1;
+      --border: #334155;
+      --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.55;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 48px 20px;
+    }
+    .launcher-head { text-align: center; margin-bottom: 36px; }
+    .launcher-head h1 {
+      font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em;
+    }
+    .launcher-head p { color: var(--muted); margin-top: 6px; }
+    .app-grid {
+      display: grid; gap: 18px; width: 100%; max-width: 760px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    .app-tile {
+      display: flex; flex-direction: column; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px; text-decoration: none;
+      color: inherit; box-shadow: var(--shadow-md);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .app-tile:hover, .app-tile:focus-visible {
+      transform: translateY(-3px); box-shadow: var(--shadow-lg);
+      border-color: var(--accent); outline: none;
+    }
+    .app-tile .icon {
+      width: 56px; height: 56px; border-radius: 14px; display: block;
+    }
+    .app-tile .app-name { font-size: 1.15rem; font-weight: 650; }
+    .app-tile .app-desc { color: var(--muted); font-size: 0.9rem; }
+    .launcher-foot { margin-top: 40px; color: var(--muted); font-size: 0.82rem; }
+  </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar">
-      <h1 class="brand">🎓 Studien-<br />Tracker</h1>
-      <nav class="tabs" role="tablist" aria-label="Hauptbereiche">
-        <button id="tab-dashboard" class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="dashboard">Übersicht</button>
-        <button id="tab-calendar" class="tab-btn" data-tab="calendar" role="tab" aria-selected="false" aria-controls="calendar">Kalender</button>
-        <button id="tab-modules" class="tab-btn" data-tab="modules" role="tab" aria-selected="false" aria-controls="modules">Module</button>
-        <button id="tab-pomodoro" class="tab-btn" data-tab="pomodoro" role="tab" aria-selected="false" aria-controls="pomodoro">Pomodoro</button>
-        <button id="tab-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="settings">Einstellungen</button>
-      </nav>
-    </aside>
+  <header class="launcher-head">
+    <h1>Apps</h1>
+    <p>Wähle eine App.</p>
+  </header>
 
-    <main>
-    <!-- ÜBERSICHT -->
-    <section id="dashboard" class="tab-panel active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
-      <!-- Layout-Umschalter: 1 oder 2 Spalten (nur bei genug Breite sichtbar) -->
-      <div class="dash-toolbar">
-        <div class="dash-col-toggle" role="group" aria-label="Spaltenlayout der Übersicht">
-          <button id="dash-col-1" class="icon-btn" title="Eine Spalte" aria-label="Übersicht einspaltig" aria-pressed="true">▯</button>
-          <button id="dash-col-2" class="icon-btn" title="Zwei Spalten" aria-label="Übersicht zweispaltig" aria-pressed="false">▯▯</button>
-        </div>
-      </div>
+  <main class="app-grid">
+    <a class="app-tile" href="apps/study/index.html">
+      <img class="icon" src="apps/study/icon.svg" alt="" aria-hidden="true" />
+      <span class="app-name">🎓 Studien-Tracker</span>
+      <span class="app-desc">Module, Kalender, Noten, Pomodoro &amp; Lernzeit.</span>
+    </a>
+  </main>
 
-      <!-- Onboarding bei komplett leerer App (keine Module/Termine) -->
-      <div id="dash-onboarding" class="dash-onboarding" hidden></div>
-
-      <!-- Prüfungs-Countdown (volle Breite) -->
-      <div id="countdown-card" class="countdown-card dash-full"></div>
-
-      <div class="dash-grid" id="dash-grid">
-        <section class="dash-block">
-          <h2>Gesamtfortschritt</h2>
-          <div class="progress-card">
-            <div class="progress-label">
-              <span>Gesamter Studienfortschritt</span>
-              <span id="overall-percent">0%</span>
-            </div>
-            <div class="progress-bar big">
-              <div id="overall-bar" class="progress-fill" style="width:0%"></div>
-            </div>
-            <p id="overall-summary" class="muted"></p>
-            <p id="gpa-summary" class="muted"></p>
-            <div id="ects-goal" class="ects-goal" hidden>
-              <div class="progress-label">
-                <span id="ects-goal-label">ECTS-Ziel</span>
-                <span id="ects-goal-count"></span>
-              </div>
-              <div class="progress-bar"><div id="ects-goal-bar" class="progress-fill ects" style="width:0%"></div></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="dash-block">
-          <h2>Aktuell in Bearbeitung</h2>
-          <div id="pinned-modules" class="module-progress-list"></div>
-        </section>
-
-        <section class="dash-block" id="overdue-block" hidden>
-          <div id="overdue-list"></div>
-        </section>
-
-        <section class="dash-block">
-          <h2>Fokus heute</h2>
-          <form id="quick-task-form" class="quick-task-form">
-            <input type="text" id="quick-task-text" placeholder="Schnell eine Aufgabe für heute …" aria-label="Neue Aufgabe für heute" required />
-            <select id="quick-task-module" aria-label="Modul für die Aufgabe"></select>
-            <button type="submit" class="primary-btn">+</button>
-          </form>
-          <ul id="pinned-tasks" class="focus-list"></ul>
-        </section>
-
-        <section class="dash-block">
-          <h2>Anstehend</h2>
-          <ul id="week-agenda" class="agenda-list"></ul>
-        </section>
-
-        <section class="dash-block" id="semester-block" hidden>
-          <h2>Noten je Semester</h2>
-          <div id="semester-stats" class="semester-stats"></div>
-        </section>
-      </div>
-    </section>
-
-    <!-- KALENDER -->
-    <section id="calendar" class="tab-panel" role="tabpanel" aria-labelledby="tab-calendar" tabindex="0">
-      <div class="calendar-controls">
-        <div class="nav-group">
-          <button id="prev-month" class="icon-btn" title="Vorheriger Monat" aria-label="Vorheriger Monat">«</button>
-          <button id="prev-day" class="icon-btn" title="Vorheriger Tag" aria-label="Vorheriger Tag">‹</button>
-        </div>
-        <h2 id="calendar-title"></h2>
-        <div class="nav-group">
-          <button id="next-day" class="icon-btn" title="Nächster Tag" aria-label="Nächster Tag">›</button>
-          <button id="next-month" class="icon-btn" title="Nächster Monat" aria-label="Nächster Monat">»</button>
-        </div>
-      </div>
-      <div class="calendar-sub">
-        <button id="today-btn" class="ghost-btn">Heute</button>
-        <div class="cal-view-toggle" role="group" aria-label="Kalenderansicht">
-          <button id="view-month" class="ghost-btn active" aria-pressed="true">Monat</button>
-          <button id="view-week" class="ghost-btn" aria-pressed="false">Woche</button>
-        </div>
-        <span id="selected-day-label" class="muted"></span>
-      </div>
-      <input type="search" id="calendar-search" class="calendar-search" placeholder="🔍 Termine & geplante Aufgaben durchsuchen …" aria-label="Kalender durchsuchen" />
-
-      <div class="calendar-weekdays" id="calendar-weekdays">
-        <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
-        <span>Fr</span><span>Sa</span><span>So</span>
-      </div>
-      <div id="calendar-grid" class="calendar-grid"></div>
-      <div id="calendar-week" class="calendar-week" hidden></div>
-
-      <!-- Detail des ausgewählten Tages -->
-      <div id="day-detail" class="day-detail"></div>
-
-      <div class="event-form-wrap">
-        <h3>Hinzufügen</h3>
-        <form id="entry-form" class="event-form">
-          <select id="entry-kind" aria-label="Art des Eintrags" title="Aufgabe oder Prüfung">
-            <option value="task">Aufgabe</option>
-            <option value="exam">Prüfung</option>
-          </select>
-          <input type="text" id="entry-title" placeholder="z. B. Vorlesung 3 ansehen" required aria-label="Bezeichnung" />
-          <input type="date" id="entry-date" required aria-label="Datum" />
-          <input type="time" id="entry-start" title="Von (optional)" aria-label="Startzeit" />
-          <input type="time" id="entry-end" title="Bis (optional)" aria-label="Endzeit" />
-          <input type="url" id="entry-url" placeholder="Link (optional)" aria-label="Link" />
-          <!-- Nur für Aufgaben: Modulzuordnung -->
-          <select id="entry-module" aria-label="Modul (für Aufgaben)" title="Modul"></select>
-          <!-- Nur für Prüfungen: Wiederholung, Serienende, Farbe -->
-          <select id="entry-repeat" title="Wiederholung" hidden>
-            <option value="">Keine Wiederholung</option>
-            <option value="daily">Täglich</option>
-            <option value="weekly">Wöchentlich</option>
-            <option value="biweekly">Alle 2 Wochen</option>
-            <option value="monthly">Monatlich</option>
-          </select>
-          <input type="date" id="entry-repeat-until" title="Serie endet am (optional)" hidden />
-          <label class="color-label" id="entry-color-label" title="Eigene Farbe statt Typ-Standardfarbe" hidden>
-            <input type="checkbox" id="entry-color-on" /> 🎨
-            <input type="color" id="entry-color" value="#4f46e5" />
-          </label>
-          <button type="submit" class="primary-btn">Hinzufügen</button>
-        </form>
-        <p id="entry-hint" class="muted entry-hint"></p>
-      </div>
-    </section>
-
-    <!-- MODULE -->
-    <section id="modules" class="tab-panel" role="tabpanel" aria-labelledby="tab-modules" tabindex="0">
-      <form id="module-form" class="inline-form">
-        <input type="text" id="module-name" placeholder="Neuer Modulname (z. B. Lineare Algebra)" required />
-        <input type="number" id="module-ects" placeholder="ECTS" min="0" step="0.5" class="ects-input" />
-        <select id="module-semester" class="semester-input" title="Semester"></select>
-        <button type="submit" class="primary-btn">Modul hinzufügen</button>
-      </form>
-      <div class="module-filters">
-        <input type="search" id="module-search" class="module-search" placeholder="🔍 Module & Aufgaben durchsuchen …" />
-        <select id="semester-filter" class="semester-filter"><option value="">Alle Semester</option></select>
-      </div>
-      <div id="modules-list" class="modules-list"></div>
-    </section>
-
-    <!-- POMODORO -->
-    <section id="pomodoro" class="tab-panel" role="tabpanel" aria-labelledby="tab-pomodoro" tabindex="0">
-      <h2>Fokus-Timer</h2>
-      <div class="pomodoro-card">
-        <div class="pomo-mode-tabs">
-          <button data-pomo-mode="focus" class="active">Fokus</button>
-          <button data-pomo-mode="short">Kurze Pause</button>
-          <button data-pomo-mode="long">Lange Pause</button>
-        </div>
-        <div id="pomo-time" class="pomo-time">25:00</div>
-        <div class="pomo-controls">
-          <button id="pomo-start" class="primary-btn">Start</button>
-          <button id="pomo-reset" class="secondary-btn">Zurücksetzen</button>
-        </div>
-        <div class="pomo-module-row">
-          <label for="pomo-module" class="muted">Lernzeit zählt für:</label>
-          <select id="pomo-module"><option value="">Ohne Modulzuordnung</option></select>
-          <select id="pomo-task" hidden aria-label="Aufgabe (optional)"><option value="">Ganzes Modul</option></select>
-        </div>
-        <div id="pomo-count" class="pomo-count">Abgeschlossene Fokus-Einheiten: 0</div>
-
-        <!-- Kompakter Fokus-Radio-Player (nur sichtbar, wenn ein Stream hinterlegt ist) -->
-        <div id="radio-player" class="radio-player" hidden>
-          <button id="radio-toggle" class="icon-btn" title="Wiedergabe" aria-label="Radio abspielen/pausieren">▶</button>
-          <span id="radio-label" class="radio-label muted"></span>
-          <input type="range" id="radio-volume" min="0" max="1" step="0.05" value="0.6" aria-label="Lautstärke" />
-          <audio id="radio-audio" preload="none"></audio>
-        </div>
-      </div>
-
-      <h2>Lernzeit</h2>
-      <div class="pomodoro-card studytime-card">
-        <div class="today-time">
-          <span class="muted">Heute gelernt</span>
-          <span id="study-today" class="today-value">0h 00m</span>
-        </div>
-        <p id="study-streak" class="study-streak"></p>
-        <div class="stats-nav">
-          <button id="stats-prev" class="icon-btn" title="Vorheriger Tag">‹</button>
-          <span id="stats-ref-label" class="stats-ref-label">Heute</span>
-          <button id="stats-next" class="icon-btn" title="Nächster Tag">›</button>
-          <button id="stats-today" class="ghost-btn">Heute</button>
-        </div>
-        <div id="study-stats" class="study-stats"></div>
-        <p class="muted study-note">Fokus-Minuten zählen als Lernzeit, Pausen nicht. Mit ‹ › andere Tage ansehen. Die Balken-Ziele kannst du in den Einstellungen anpassen.</p>
-      </div>
-
-      <h2>Lernzeit im Jahr</h2>
-      <div class="pomodoro-card">
-        <div id="study-heatmap" class="study-heatmap"></div>
-      </div>
-
-      <div class="pomo-two-col">
-        <div class="pomo-col">
-          <h2>Verlauf (14 Tage)</h2>
-          <div class="pomodoro-card">
-            <div id="study-chart" class="study-chart"></div>
-          </div>
-        </div>
-        <div class="pomo-col">
-          <h2>Lernzeit je Modul</h2>
-          <div class="pomodoro-card">
-            <div id="study-per-module" class="study-stats"></div>
-          </div>
-        </div>
-      </div>
-
-      <details class="pomo-settings-details">
-        <summary>Eigene Timer-Zeiten anpassen</summary>
-        <p class="muted">Lege eigene Längen in Minuten fest. Änderungen gelten sofort und werden gespeichert.</p>
-        <form id="pomo-settings" class="pomo-settings">
-          <label>Fokus
-            <input type="number" id="dur-focus" min="1" max="180" step="1" />
-          </label>
-          <label>Kurze Pause
-            <input type="number" id="dur-short" min="1" max="60" step="1" />
-          </label>
-          <label>Lange Pause
-            <input type="number" id="dur-long" min="1" max="120" step="1" />
-          </label>
-          <button type="submit" class="primary-btn">Zeiten speichern</button>
-        </form>
-        <p id="pomo-status" class="muted"></p>
-      </details>
-    </section>
-
-    <!-- EINSTELLUNGEN (als Akkordeon) -->
-    <section id="settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
-      <details class="settings-group" open>
-        <summary>Darstellung</summary>
-        <p class="muted">Wähle das Erscheinungsbild der App.</p>
-        <div class="theme-switch">
-          <button data-theme-btn="light" class="ghost-btn">☀️ Hell</button>
-          <button data-theme-btn="dark" class="ghost-btn">🌙 Dunkel</button>
-          <button data-theme-btn="auto" class="ghost-btn">🖥️ Automatisch</button>
-        </div>
-      </details>
-
-      <details class="settings-group">
-        <summary>Synchronisierung (Geräte-Sync)</summary>
-        <p class="muted">Melde dich an, damit deine Daten automatisch zwischen Mac und iPhone synchronisiert werden. Ohne Anmeldung läuft die App wie bisher nur lokal.</p>
-        <div id="sync-area">
-          <div id="sync-logged-out">
-            <!-- Primär: E-Mail + Passwort (kein Mail-Zugriff nötig) -->
-            <form id="sync-pw-form" class="sync-pw-form">
-              <input type="email" id="sync-email" placeholder="deine@email.de" autocomplete="username" required />
-              <input type="password" id="sync-password" placeholder="Passwort" autocomplete="current-password" required minlength="6" />
-              <div class="data-actions">
-                <button type="submit" class="primary-btn">Anmelden</button>
-                <button type="button" id="sync-register-btn" class="secondary-btn">Registrieren</button>
-              </div>
-            </form>
-            <!-- Alternative: Anmeldelink per E-Mail (Magic Link) -->
-            <details class="sync-magic">
-              <summary>Lieber per E-Mail-Link anmelden</summary>
-              <p class="muted">Du bekommst einen einmaligen Link per E-Mail — praktisch, wenn du dir kein Passwort merken willst.</p>
-              <form id="sync-login-form" class="inline-form">
-                <input type="email" id="sync-magic-email" placeholder="deine@email.de" required />
-                <button type="submit" class="primary-btn">Anmeldelink senden</button>
-              </form>
-            </details>
-          </div>
-          <div id="sync-logged-in" hidden>
-            <p class="muted">Angemeldet als <strong id="sync-user-email"></strong>.</p>
-            <div class="data-actions">
-              <button id="sync-now-btn" class="secondary-btn">Jetzt synchronisieren</button>
-              <button id="sync-restore-btn" class="secondary-btn">Lokale Sicherung wiederherstellen</button>
-              <button id="sync-logout-btn" class="danger-btn">Abmelden</button>
-            </div>
-          </div>
-          <span id="conn-badge" class="conn-badge"></span>
-          <p id="sync-status" class="muted" aria-live="polite"></p>
-        </div>
-      </details>
-
-      <details class="settings-group">
-        <summary>Wochenansicht (Stundenraster)</summary>
-        <p class="muted">Lege fest, welchen Zeitraum das Stundenraster der Wochenansicht zeigt und wie lang ein neuer Block standardmäßig dauert.</p>
-        <form id="weekgrid-form" class="pomo-settings">
-          <label>Von (Uhr) <input type="number" id="weekgrid-start" min="0" max="23" step="1" /></label>
-          <label>Bis (Uhr) <input type="number" id="weekgrid-end" min="1" max="24" step="1" /></label>
-          <label>Standard-Dauer (Min.) <input type="number" id="weekgrid-dur" min="15" max="480" step="15" /></label>
-          <button type="submit" class="primary-btn">Speichern</button>
-        </form>
-        <p id="weekgrid-status" class="muted"></p>
-      </details>
-
-      <details class="settings-group">
-        <summary>Ziele &amp; Erinnerungen</summary>
-
-        <div class="settings-sub">
-          <h4 class="settings-sub-head">🎓 Studienziel (ECTS)</h4>
-          <p class="muted">Lege dein Gesamtziel in ECTS fest (z. B. 180). Der Fortschritt im Dashboard zeigt dann, wie viele ECTS aus abgeschlossenen Modulen du schon erreicht hast. 0 = kein Ziel.</p>
-          <form id="ects-goal-form" class="pomo-settings">
-            <label>ECTS-Ziel <input type="number" id="ects-target" min="0" max="1000" step="1" placeholder="z. B. 180" /></label>
-            <button type="submit" class="primary-btn">Ziel speichern</button>
-          </form>
-          <p id="ects-goal-status" class="muted"></p>
-        </div>
-
-        <div class="settings-sub">
-          <h4 class="settings-sub-head">⏱️ Lernzeit-Ziele</h4>
-          <p class="muted">Diese Werte (in Stunden) bestimmen, wann ein Lernzeit-Balken „voll“ ist.</p>
-          <form id="goals-form" class="pomo-settings">
-            <label>Tag <input type="number" id="goal-day" min="1" max="24" step="0.5" /></label>
-            <label>Woche <input type="number" id="goal-week" min="1" max="168" step="1" /></label>
-            <label>Monat <input type="number" id="goal-month" min="1" max="744" step="1" /></label>
-            <label>Jahr <input type="number" id="goal-year" min="1" max="8760" step="1" /></label>
-            <button type="submit" class="primary-btn">Ziele speichern</button>
-          </form>
-          <p id="goals-status" class="muted"></p>
-        </div>
-
-        <div class="settings-sub">
-          <h4 class="settings-sub-head">🔔 Erinnerungen</h4>
-          <p class="muted">Erhalte eine System-Benachrichtigung, wenn heute eine Prüfung oder Abgabe ansteht. Die Benachrichtigung ist anklickbar und öffnet die App. Hinweis: Browser (besonders auf dem iPhone) liefern solche Erinnerungen zuverlässig nur aus, während die App bzw. ein Tab geöffnet ist oder kürzlich geöffnet war — echtes Hintergrund-Push bei komplett geschlossener App ist ohne eigenen Server nicht möglich.</p>
-          <button id="notify-btn" class="primary-btn">Erinnerungen aktivieren</button>
-        </div>
-      </details>
-
-      <details class="settings-group">
-        <summary>Export, Sicherung &amp; Druck</summary>
-        <p class="muted">Kalender als <code>.ics</code> exportieren, eine druckbare Übersicht erzeugen, oder deine Daten als Datei sichern bzw. wieder einspielen.</p>
-        <div class="data-actions">
-          <button id="ics-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Kalender (.ics)</button>
-          <label class="primary-btn file-label">
-            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 21V11m0 0 3 3m-3-3-3 3"/></svg> Kalender importieren (.ics)
-            <input type="file" id="ics-import-file" accept="text/calendar,.ics" hidden />
-          </label>
-          <button id="print-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Papierversion drucken</button>
-        </div>
-        <div class="data-actions" style="margin-top:4px">
-          <button id="export-btn" class="primary-btn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Exportieren (.json)</button>
-          <label class="primary-btn file-label">
-            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg> Importieren
-            <input type="file" id="import-file" accept="application/json,.json" hidden />
-          </label>
-        </div>
-        <p id="data-status" class="muted"></p>
-      </details>
-
-      <details class="settings-group">
-        <summary>Fokus-Radio (Pomodoro)</summary>
-        <p class="muted">Hinterlege einen Internet-Radio-Stream, der im Pomodoro-Tab per Play-Knopf läuft. Wähle einen Sender oder trage eine eigene Stream-URL ein. Hinweis: Auf dem iPhone spielt der Ton nur, solange die App im Vordergrund ist.</p>
-        <form id="radio-form" class="pomo-settings">
-          <label>Sender
-            <select id="radio-preset">
-              <option value="">— eigene URL —</option>
-            </select>
-          </label>
-          <label>Stream-URL
-            <input type="url" id="radio-url" placeholder="https://… (z. B. ein Lofi-Stream)" />
-          </label>
-          <button type="submit" class="primary-btn">Speichern</button>
-          <button type="button" id="radio-clear" class="secondary-btn">Entfernen</button>
-        </form>
-        <p id="radio-status" class="muted"></p>
-      </details>
-
-      <details class="settings-group" id="shortcuts-group">
-        <summary>Tastenkürzel</summary>
-        <p class="muted">Am Computer schneller navigieren (in Eingabefeldern deaktiviert):</p>
-        <ul class="shortcut-list">
-          <li><kbd>1</kbd>–<kbd>5</kbd><span>Tabs wechseln (Übersicht … Einstellungen)</span></li>
-          <li><kbd>N</kbd><span>Neues Modul anlegen</span></li>
-          <li><kbd>/</kbd><span>Modulsuche fokussieren</span></li>
-          <li><kbd>←</kbd> <kbd>→</kbd><span>In der Tableiste blättern</span></li>
-          <li><kbd>Esc</kbd><span>Eingabefeld verlassen</span></li>
-        </ul>
-      </details>
-
-      <details class="settings-group">
-        <summary>Diagnose &amp; Zurücksetzen</summary>
-        <p class="muted">Letzte Fehler werden lokal protokolliert. Zurücksetzen löscht dauerhaft alles in diesem Browser.</p>
-        <div class="data-actions">
-          <button id="err-show-btn" class="secondary-btn">Protokoll anzeigen</button>
-          <button id="err-clear-btn" class="secondary-btn">Protokoll leeren</button>
-        </div>
-        <pre id="err-log" class="err-log" hidden></pre>
-        <button id="reset-btn" class="danger-btn">Alle Daten löschen</button>
-      </details>
-    </section>
-    </main>
-  </div>
-
-  <!-- Druck-/PDF-Ansicht (nur beim Drucken sichtbar) -->
-  <div id="print-view" class="print-view" aria-hidden="true"></div>
-
-  <!-- Snackbar für „Rückgängig“ -->
-  <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
-
-  <!-- Supabase-Client (für Geräte-Sync). Lädt aus dem Netz; ohne Netz läuft die App lokal weiter. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="supabase-config.js"></script>
-  <script src="app.js"></script>
-  <script>
-    // Service Worker registrieren. Updates werden automatisch & unsichtbar
-    // übernommen (kein Hinweis-Banner): neuer SW aktiviert sich sofort, danach
-    // lädt die Seite einmalig neu, um die neue Version zu zeigen.
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").then((reg) => {
-          setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
-        }).catch(() => {});
-
-        let reloaded = false;
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (reloaded) return; reloaded = true; window.location.reload();
-        });
-      });
-    }
-  </script>
+  <footer class="launcher-foot">Weitere Apps folgen.</footer>
 </body>
 </html>

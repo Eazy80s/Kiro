@@ -18,7 +18,7 @@ import { dirname, resolve } from "node:path";
 import vm from "node:vm";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const appPath = resolve(__dirname, "..", "app.js");
+const appPath = resolve(__dirname, "..", "apps", "study", "app.js");
 const source = readFileSync(appPath, "utf8");
 
 /* ---- Minimale Browser-Stubs ----

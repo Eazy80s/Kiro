@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const indexPath = resolve(__dirname, "..", "index.html");
+const indexPath = resolve(__dirname, "..", "apps", "study", "index.html");
 const url = "file://" + indexPath;
 
 // Chrome-Binary finden (ENV, absolute Pfade, dann PATH-Namen)

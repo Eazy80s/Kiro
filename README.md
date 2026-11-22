@@ -29,10 +29,22 @@ Eine schlanke Studienverwaltung, die komplett im Browser läuft – keine Instal
 - **💾 Daten** – Export/Import als `.json`, `.ics`-Kalenderexport, Zurücksetzen; **Löschen mit „Rückgängig“**; **Fehlerprotokoll**.
 - **📱 Installierbar** (PWA) – auf dem iPhone „Zum Home-Bildschirm“, funktioniert offline (benötigt HTTPS-Hosting, siehe unten).
 
+## Aufbau (Multi-App-Hub)
+
+Das Repo ist ein kleiner **App-Hub**: Die Wurzel-`index.html` ist ein Launcher
+(Startmenü), die einzelnen Apps liegen in eigenen Ordnern unter `apps/`.
+
+- **Launcher:** `index.html` (Wurzel) → zeigt die verfügbaren Apps als Kacheln.
+- **App #1 – Studien-Tracker:** `apps/study/` (eigenständige PWA mit eigenem
+  `app.js`, `styles.css`, `manifest.webmanifest`, `sw.js`, Icons).
+
+Weitere Apps kommen später als eigene Ordner unter `apps/` dazu.
+
 ## Starten (lokal)
 
 1. Repository herunterladen oder klonen.
-2. **`index.html`** doppelklicken – öffnet sich im Standardbrowser.
+2. **`index.html`** (Wurzel) doppelklicken → Launcher öffnet sich, von dort den
+   Studien-Tracker starten. Oder direkt **`apps/study/index.html`** öffnen.
 
 Kein Build, keine Abhängigkeiten.
 
@@ -40,7 +52,7 @@ Kein Build, keine Abhängigkeiten.
 
 Zum Installieren als App braucht es eine **HTTPS-Adresse** (lokale Dateien reichen dafür nicht). Zwei einfache Wege:
 
-- **Netlify Drop (kostenlos, ohne Konto):** Gehe auf <https://app.netlify.com/drop> und ziehe den **Projektordner** (mit `index.html`, `styles.css`, `app.js`, `manifest.webmanifest`, `sw.js`, den Icons) in das Fenster. Du erhältst sofort eine HTTPS-URL. Diese in Safari öffnen → **Teilen → Zum Home-Bildschirm**.
+- **Netlify Drop (kostenlos, ohne Konto):** Gehe auf <https://app.netlify.com/drop> und ziehe den **gesamten Projektordner** (Launcher + `apps/`) in das Fenster. Du erhältst sofort eine HTTPS-URL. Den Studien-Tracker findest du dann unter `…/apps/study/`. In Safari öffnen → **Teilen → Zum Home-Bildschirm**.
 - **GitHub Pages:** nur möglich, wenn das Repo **öffentlich** ist (oder mit bezahltem Plan für private Repos). Dann: Repo → Settings → Pages → Branch `main`, Ordner `/`.
 
 ## Geräte-Sync mit Supabase (optional)
@@ -57,7 +69,7 @@ Supabase-Projekt synchronisiert die App automatisch zwischen Mac und iPhone.
 3. **Project Settings → API** öffnen und zwei Werte kopieren:
    - **Project URL**
    - **anon public** Key
-4. Diese beiden Werte in [`supabase-config.js`](supabase-config.js) eintragen
+4. Diese beiden Werte in [`apps/study/supabase-config.js`](apps/study/supabase-config.js) eintragen
    (die Platzhalter `DEINE_…` ersetzen) und die Änderung pushen/neu deployen.
    *(Der anon-Key ist für den Browser gedacht und darf öffentlich stehen — der
    Schutz kommt über Login + Row-Level-Security.)*
@@ -93,11 +105,12 @@ Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 
 | Datei | Zweck |
 |------|---------|
-| `index.html` | Struktur & Layout |
-| `styles.css` | Styling (hell/dunkel über CSS-Variablen) |
-| `app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
-| `manifest.webmanifest`, `sw.js`, `icon*` | PWA (installierbar/offline) |
-| `supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
+| `index.html` | **Launcher** (Startmenü des App-Hubs) |
+| `apps/study/index.html` | Studien-Tracker: Struktur & Layout |
+| `apps/study/styles.css` | Styling (hell/dunkel über CSS-Variablen) |
+| `apps/study/app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
+| `apps/study/manifest.webmanifest`, `apps/study/sw.js`, `apps/study/icon*` | PWA (installierbar/offline) |
+| `apps/study/supabase-config.js` | Deine Supabase-Zugangsdaten (Platzhalter — selbst ausfüllen) |
 | `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
 | `tests/logic.test.js` | Automatisierte Tests der Rechenlogik |
 | `tests/security.test.mjs` | Sicherheits-/Migrationstests gegen die echte `app.js` |

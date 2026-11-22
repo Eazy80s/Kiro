@@ -449,7 +449,8 @@ h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 8px 10px; border-radius: 8px; background: var(--surface-2); margin-bottom: 6px;
 }
-.day-detail .d-event .d-left { display: flex; align-items: center; gap: 8px; }
+.day-detail .d-event .d-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.day-detail .d-event .d-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .day-detail .d-event.d-task { background: #f5f3ff; }
 [data-theme="dark"] .day-detail .d-event.d-task { background: rgba(124,58,237,0.18); }
 .day-detail .d-event input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }

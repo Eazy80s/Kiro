@@ -138,8 +138,8 @@ eq(api.sanitizeUrl("   "), null, "leer → null");
 const dirty = {
   schemaVersion: 3,
   events: [
-    { id: "e1", date: "2026-11-20", title: "X", type: "exam", color: 'red" onmouseover="alert(1)' },
-    { id: "e2", date: "2026-11-21", title: "Y", type: "other", color: "#00ff00" },
+    { id: "e1", date: "2026-11-20", title: "X", type: "exam", color: 'red" onmouseover="alert(1)', url: "javascript:alert(1)" },
+    { id: "e2", date: "2026-11-21", title: "Y", type: "other", color: "#00ff00", url: "zoom.us/j/123" },
   ],
   modules: [
     { id: "m1", name: "Mathe", ects: 6, links: [
@@ -152,6 +152,8 @@ const dirty = {
 const clean = api.migrate(dirty);
 eq(clean.events[0].color, null, "migrate: injizierte Event-Farbe wird verworfen");
 eq(clean.events[1].color, "#00ff00", "migrate: gültige Event-Farbe bleibt");
+eq(clean.events[0].url, "", "migrate: javascript:-Event-URL wird verworfen");
+eq(clean.events[1].url, "https://zoom.us/j/123", "migrate: Event-URL ohne Schema wird zu https");
 eq(clean.modules[0].links[0].url, "", "migrate: javascript:-Link-URL wird verworfen");
 eq(clean.modules[0].links[1].url, "https://ilias.uni-x.de/goto.php?id=42", "migrate: gültige Link-URL bleibt");
 eq(clean.modules[0].links[2].url, "https://moodle.hs.de/kurs", "migrate: Link ohne Schema wird zu https");

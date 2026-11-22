@@ -8,8 +8,9 @@
      task:     { id, text, done, date, startTime, endTime, url, subtasks:[subtask] }
                  // startTime/endTime: "HH:MM" oder null; url: http(s) oder ""
      subtask:  { id, text, done }
-     event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color }
-                 // type: "exam" | "deadline" | "other"; color: null oder Hex (sanitizeHexColor)
+     event:    { id, date, startTime, endTime, title, type, repeat, repeatUntil, color, url }
+                 // type: "exam" | "deadline" | "other"; color: null oder Hex (sanitizeHexColor);
+                 // url: http(s) oder "" (sanitizeUrl)
    Separate Keys: Pomodoro-Zeiten, Lernstatistik (inkl. Ziele & Lernzeit je Modul), Theme.
 
    Sicherheit: Nutzerdaten werden beim Rendern mit escapeHtml maskiert; die
@@ -130,6 +131,9 @@ function migrate(data) {
     // Immer härten: nur echte Hex-Farben überleben (schützt vor style-Injection
     // aus importierten/gesyncten Daten, die später per innerHTML gerendert werden).
     e.color = sanitizeHexColor(e.color);
+    // Optionaler Link (z. B. Online-Prüfung/Zoom). Immer härten: nur http(s)
+    // überlebt (schützt Import/Sync), sonst leer.
+    e.url = sanitizeUrl(e.url) || "";
   });
   data.modules.forEach((m) => {
     if (typeof m.ects !== "number") m.ects = Number(m.ects) || 0;
@@ -1458,10 +1462,16 @@ function renderDayDetail() {
     // style-Attribut, selbst falls doch mal ein ungeprüfter Wert durchkäme.
     const safeColor = sanitizeHexColor(e.color);
     const colorStyle = safeColor ? ` style="background:${safeColor};color:#fff"` : "";
+    const linkChip = e.url
+      ? ` <a class="task-link mod-link" href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(e.url)}">${icon("link")} Öffnen</a>`
+      : "";
     html += `
       <div class="d-event">
-        <span class="d-left"><span class="tag ${e.type}"${colorStyle}>${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}</span>
-        <button class="del-btn" data-del-event="${e.id}" title="${delTitle}" aria-label="${delTitle}">${icon("close")}</button>
+        <span class="d-left"><span class="tag ${e.type}"${colorStyle}>${typeLabel(e.type)}</span> ${timePart}${escapeHtml(e.title)}${repPart}${linkChip}</span>
+        <span class="d-actions">
+          <button class="icon-btn" data-edit-event="${e.id}" title="Bearbeiten" aria-label="Termin „${escapeHtml(e.title)}“ bearbeiten">${icon("edit")}</button>
+          <button class="del-btn" data-del-event="${e.id}" title="${delTitle}" aria-label="${delTitle}">${icon("close")}</button>
+        </span>
       </div>`;
   });
 
@@ -1502,10 +1512,19 @@ function renderDayDetail() {
 
   wrap.innerHTML = html;
 
+  wrap.querySelectorAll("[data-edit-event]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ev = state.events.find((x) => x.id === btn.dataset.editEvent);
+      if (ev) startEditEvent(ev);
+    });
+  });
+
   wrap.querySelectorAll("[data-del-event]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const ev = state.events.find((x) => x.id === btn.dataset.delEvent);
       const idx = state.events.indexOf(ev);
+      // Falls genau dieser Termin gerade bearbeitet wird: Bearbeiten-Modus beenden.
+      if (ev && editingEventId === ev.id) resetEntryFormMode();
       state.events = state.events.filter((x) => x.id !== btn.dataset.delEvent);
       saveState();
       renderCalendar();
@@ -1851,6 +1870,44 @@ function updateEntryFormMode() {
 if (entryKindSel) entryKindSel.addEventListener("change", updateEntryFormMode);
 
 const entryForm = document.getElementById("entry-form");
+
+// Bearbeiten-Modus: ID des gerade bearbeiteten Termins (oder null = neu anlegen).
+let editingEventId = null;
+
+// Termin-Formular mit den Werten eines bestehenden Termins befüllen (Bearbeiten).
+function startEditEvent(ev) {
+  if (!ev) return;
+  editingEventId = ev.id;
+  document.getElementById("entry-kind").value = "exam"; // Termine sind immer „Prüfung"
+  updateEntryFormMode();
+  document.getElementById("entry-title").value = ev.title || "";
+  document.getElementById("entry-date").value = ev.date || "";
+  document.getElementById("entry-start").value = ev.startTime || "";
+  document.getElementById("entry-end").value = ev.endTime || "";
+  document.getElementById("entry-url").value = ev.url || "";
+  document.getElementById("entry-repeat").value = ev.repeat || "";
+  document.getElementById("entry-repeat-until").value = ev.repeatUntil || "";
+  const colorOn = document.getElementById("entry-color-on");
+  const colorInp = document.getElementById("entry-color");
+  colorOn.checked = !!ev.color;
+  if (ev.color) colorInp.value = ev.color;
+  // Button-Text + Hinweis auf „Bearbeiten" umstellen und zum Formular scrollen.
+  const submitBtn = entryForm.querySelector("button[type=submit]");
+  if (submitBtn) submitBtn.textContent = "Änderungen speichern";
+  const hint = document.getElementById("entry-hint");
+  if (hint) hint.textContent = `Bearbeite „${ev.title}“. Zum Abbrechen das Formular leeren oder die Seite wechseln.`;
+  entryForm.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("entry-title").focus();
+}
+
+// Formular aus dem Bearbeiten-Modus zurück in den Anlege-Modus versetzen.
+function resetEntryFormMode() {
+  editingEventId = null;
+  const submitBtn = entryForm.querySelector("button[type=submit]");
+  if (submitBtn) submitBtn.textContent = "Hinzufügen";
+  updateEntryFormMode();
+}
+
 if (entryForm) entryForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const kind = document.getElementById("entry-kind").value;
@@ -1874,7 +1931,18 @@ if (entryForm) entryForm.addEventListener("submit", (e) => {
     const repeatUntil = (repeat ? document.getElementById("entry-repeat-until").value : "") || null;
     const colorOn = document.getElementById("entry-color-on").checked;
     const color = colorOn ? sanitizeHexColor(document.getElementById("entry-color").value) : null;
-    state.events.push({ id: uid(), date, startTime, endTime, title, type: "exam", repeat, repeatUntil, color });
+    if (editingEventId) {
+      // Bestehenden Termin aktualisieren (Bearbeiten-Modus).
+      const ev = state.events.find((x) => x.id === editingEventId);
+      if (ev) {
+        ev.date = date; ev.startTime = startTime; ev.endTime = endTime;
+        ev.title = title; ev.url = url;
+        ev.repeat = repeat; ev.repeatUntil = repeatUntil; ev.color = color;
+      }
+      resetEntryFormMode();
+    } else {
+      state.events.push({ id: uid(), date, startTime, endTime, title, type: "exam", repeat, repeatUntil, color, url });
+    }
   }
   saveState();
   selectedDate = date;

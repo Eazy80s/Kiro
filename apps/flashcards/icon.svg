@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="104" fill="#0ea5e9"/>
+  <g>
+    <!-- back card -->
+    <rect x="150" y="176" width="236" height="172" rx="22" fill="#ffffff" opacity="0.55" transform="rotate(-10 268 262)"/>
+    <!-- front card -->
+    <rect x="130" y="188" width="252" height="180" rx="24" fill="#ffffff"/>
+    <!-- Q/A lines -->
+    <rect x="166" y="228" width="120" height="20" rx="10" fill="#0ea5e9"/>
+    <rect x="166" y="268" width="180" height="14" rx="7" fill="#bae6fd"/>
+    <rect x="166" y="296" width="150" height="14" rx="7" fill="#bae6fd"/>
+    <rect x="166" y="324" width="90" height="14" rx="7" fill="#bae6fd"/>
+  </g>
+</svg>

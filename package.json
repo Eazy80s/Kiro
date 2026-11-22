@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node tests/logic.test.js && node tests/security.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
-    "test:all": "node tests/logic.test.js && node tests/security.test.mjs && node tests/browser.test.mjs"
+    "test:flashcards": "node tests/flashcards.test.mjs",
+    "test:all": "node tests/logic.test.js && node tests/security.test.mjs && node tests/flashcards.test.mjs && node tests/browser.test.mjs"
   },
   "license": "MIT"
 }

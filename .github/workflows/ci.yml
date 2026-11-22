@@ -17,6 +17,8 @@ jobs:
           node-version: 20
       - name: Logik-Tests ausführen
         run: npm test
+      - name: Karteikarten-Tests ausführen
+        run: npm run test:flashcards
       - name: Chrome einrichten
         uses: browser-actions/setup-chrome@v1
         id: setup-chrome

@@ -115,6 +115,14 @@
       <!-- Mini-Stats aus den lokal gespeicherten Tracker-Daten (nur lesend, defensiv) -->
       <span class="app-stats" id="study-stats" hidden></span>
     </a>
+
+    <a class="app-tile" href="apps/flashcards/index.html">
+      <img class="icon" src="apps/flashcards/icon.svg" alt="" aria-hidden="true" />
+      <span class="app-name">🃏 Karteikarten</span>
+      <span class="app-desc">Lernkarten mit Spaced Repetition — Stapel, Lern-Sessions, Import/Export.</span>
+      <!-- Mini-Stats aus den lokal gespeicherten Karteikarten-Daten (nur lesend, defensiv) -->
+      <span class="app-stats" id="flashcards-stats" hidden></span>
+    </a>
   </main>
 
   <section class="account" id="account" aria-label="Konto / Synchronisierung">
@@ -347,6 +355,51 @@
       }
 
       if (!bits.length) return;           // nichts Sinnvolles → Kachel unverändert
+      el.textContent = bits.join(" · ");
+      el.hidden = false;
+    })();
+  </script>
+
+  <script>
+    /* Mini-Stats auf der Karteikarten-Kachel.
+       Liest die lokal gespeicherten Daten (Key "flashcards-v1") NUR LESEND
+       und zeigt eine kurze Zusammenfassung („2 Stapel · 7 fällig“). Streng
+       defensiv: fehlende/kaputte Daten → gar nichts anzeigen. */
+    (function () {
+      "use strict";
+      var el = document.getElementById("flashcards-stats");
+      if (!el) return;
+
+      var data;
+      try {
+        var raw = localStorage.getItem("flashcards-v1");
+        if (!raw) return;
+        data = JSON.parse(raw);
+      } catch (e) { return; }
+      if (!data || typeof data !== "object") return;
+
+      var decks = Array.isArray(data.decks) ? data.decks : [];
+      var cards = Array.isArray(data.cards) ? data.cards : [];
+      var now = Date.now();
+      var bits = [];
+
+      if (decks.length > 0) {
+        bits.push(decks.length + (decks.length === 1 ? " Stapel" : " Stapel"));
+      }
+
+      // Fällige Karten: bereits mind. einmal gelernt (reps>0 oder lastReviewed)
+      // und due-Zeitpunkt erreicht; plus neue Karten (reps 0, kein Review).
+      var due = 0, fresh = 0;
+      cards.forEach(function (c) {
+        if (!c || typeof c !== "object") return;
+        var isNew = (!c.reps || c.reps === 0) && !c.lastReviewed;
+        if (isNew) { fresh++; return; }
+        if ((c.due || 0) <= now) due++;
+      });
+      if (due > 0) bits.push(due + " fällig");
+      else if (fresh > 0) bits.push(fresh + " neu");
+
+      if (!bits.length) return;
       el.textContent = bits.join(" · ");
       el.hidden = false;
     })();

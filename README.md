@@ -39,9 +39,18 @@ Das Repo ist ein kleiner **App-Hub**: Die Wurzel-`index.html` ist ein Launcher
   übernehmen die Session automatisch. Die Studien-Tracker-Kachel zeigt zudem
   **Mini-Stats** aus den lokal gespeicherten Daten (z. B. „3 Module aktiv ·
   nächste Prüfung in 5 Tagen"; nur lesend, ohne Daten bleibt die Kachel schlicht).
+  Die Karteikarten-Kachel zeigt analog „2 Stapel · 7 fällig".
 - **App #1 – Studien-Tracker:** `apps/study/` (eigenständige PWA mit eigenem
   `app.js`, `styles.css`, `manifest.webmanifest`, `sw.js`, Icons). Oben links
   führt **„← Apps"** zurück zum Launcher.
+- **App #2 – Karteikarten:** `apps/flashcards/` (eigenständige PWA). Lernkarten
+  mit **Spaced Repetition** (SM-2-Algorithmus): Stapel anlegen, Karten
+  erfassen, Lern-Sessions mit Bewertung (Nochmal / Schwer / Gut / Einfach) und
+  automatischer Wiedervorlage. Import/Export als `.json` sowie Textimport
+  (`Frage;Antwort` pro Zeile). **Erstmal rein lokal** (localStorage); Geräte-Sync
+  und ein KI-Modus (Fragen aus hochgeladenen PDFs, mündliche Prüfungen) sind als
+  spätere Ausbaustufe vorgesehen. Die Datenstruktur hält dafür bereits ein
+  `source`-Feld je Karte frei.
 - **Geteilt:** `apps/shared/supabase-config.js` — eine Supabase-Konfiguration für
   Launcher und Apps. Die Anmelde-Session liegt origin-weit im Browser, deshalb
   genügt ein Login im Launcher; die Apps synchronisieren dann ihre eigenen Daten.
@@ -106,6 +115,7 @@ npm run test:all      # alles
 
 - `tests/logic.test.js` – Rechenlogik (Fortschritt, GPA, Teilnoten, Wiederholungen, Streak …).
 - `tests/security.test.mjs` – lädt **die echte `app.js`** (per `node:vm` mit DOM-Stubs) und prüft `escapeHtml`, `sanitizeUrl`, `sanitizeHexColor` und `migrate` direkt am Produktionscode (kein Spiegeln → kein Drift).
+- `tests/flashcards.test.mjs` – lädt **die echte `apps/flashcards/app.js`** und prüft den Spaced-Repetition-Scheduler (SM-2), `migrate`/`normalizeCard`, `escapeHtml` u. a. direkt am Produktionscode (`npm run test:flashcards`).
 
 Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 
@@ -118,6 +128,10 @@ Bei jedem Push laufen beide Tests automatisch über GitHub Actions.
 | `apps/study/styles.css` | Styling (hell/dunkel über CSS-Variablen) |
 | `apps/study/app.js` | Gesamte Logik (gekapselt in einem IIFE, in klar benannte Abschnitte gegliedert) |
 | `apps/study/manifest.webmanifest`, `apps/study/sw.js`, `apps/study/icon*` | PWA (installierbar/offline) |
+| `apps/flashcards/index.html` | Karteikarten: Struktur & Layout |
+| `apps/flashcards/styles.css` | Styling (hell/dunkel, gemeinsamer Theme-Schlüssel) |
+| `apps/flashcards/app.js` | Gesamte Logik der Karteikarten-App (IIFE, SM-2-Scheduler) |
+| `apps/flashcards/manifest.webmanifest`, `apps/flashcards/sw.js`, `apps/flashcards/icon*` | PWA (installierbar/offline) |
 | `apps/shared/supabase-config.js` | Supabase-Zugangsdaten, von Launcher **und** Apps gemeinsam genutzt (Platzhalter — selbst ausfüllen) |
 | `supabase-setup.sql` | Einmaliges SQL-Setup für dein Supabase-Projekt |
 | `tests/logic.test.js` | Automatisierte Tests der Rechenlogik |

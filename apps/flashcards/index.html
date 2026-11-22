@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Karteikarten</title>
+
+  <!-- Installierbare Web-App (zum Home-Bildschirm hinzufügen auf dem iPhone) -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Karteikarten" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Theme früh setzen (gleicher Schlüssel wie Launcher & Study-Tracker),
+    // damit es beim Laden nicht kurz hell aufblitzt.
+    (function () {
+      try {
+        var t = localStorage.getItem("study-tracker-theme") || "auto";
+        var dark = t === "dark" || (t === "auto" && window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="app-back" href="../../index.html" title="Zurück zum Startmenü" aria-label="Zurück zum Startmenü">
+        <span aria-hidden="true">←</span> Apps
+      </a>
+      <h1 class="brand">🃏 Kartei-<br />karten</h1>
+      <nav class="tabs" role="tablist" aria-label="Hauptbereiche">
+        <button id="tab-study" class="tab-btn active" data-tab="study" role="tab" aria-selected="true" aria-controls="study">Lernen</button>
+        <button id="tab-decks" class="tab-btn" data-tab="decks" role="tab" aria-selected="false" aria-controls="decks">Stapel</button>
+        <button id="tab-manage" class="tab-btn" data-tab="manage" role="tab" aria-selected="false" aria-controls="manage">Karten</button>
+        <button id="tab-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="settings">Einstellungen</button>
+      </nav>
+    </aside>
+
+    <main>
+    <!-- LERNEN -->
+    <section id="study" class="tab-panel active" role="tabpanel" aria-labelledby="tab-study" tabindex="0">
+      <div class="study-head">
+        <h2>Lernen</h2>
+        <div class="study-deck-row">
+          <label for="study-deck" class="muted">Stapel:</label>
+          <select id="study-deck" aria-label="Stapel zum Lernen wählen"></select>
+        </div>
+      </div>
+
+      <!-- Zusammenfassung / Startbildschirm der Session -->
+      <div id="study-intro" class="study-intro">
+        <div class="session-stats" id="session-stats"></div>
+        <button id="start-session-btn" class="primary-btn">Lern-Session starten</button>
+        <p id="study-empty" class="muted" hidden></p>
+      </div>
+
+      <!-- Aktive Lernkarte -->
+      <div id="study-card-wrap" class="study-card-wrap" hidden>
+        <div class="study-progress">
+          <span id="study-counter" class="muted"></span>
+          <div class="progress-bar"><div id="study-bar" class="progress-fill" style="width:0%"></div></div>
+        </div>
+
+        <div id="flashcard" class="flashcard" tabindex="0" role="button" aria-label="Karte umdrehen (Leertaste)">
+          <div class="flashcard-inner">
+            <div class="flashcard-side front">
+              <span class="flashcard-label">Frage</span>
+              <div id="card-front" class="flashcard-text"></div>
+            </div>
+            <div class="flashcard-side back">
+              <span class="flashcard-label">Antwort</span>
+              <div id="card-back" class="flashcard-text"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="reveal-row" class="reveal-row">
+          <button id="reveal-btn" class="primary-btn">Antwort zeigen <kbd>Leer</kbd></button>
+        </div>
+
+        <!-- Bewertung (SM-2) -->
+        <div id="grade-row" class="grade-row" hidden>
+          <button class="grade-btn again" data-grade="0" title="Nochmal (nicht gewusst)"><span class="g-label">Nochmal</span><span class="g-hint" id="hint-again"></span><kbd>1</kbd></button>
+          <button class="grade-btn hard" data-grade="3" title="Schwer"><span class="g-label">Schwer</span><span class="g-hint" id="hint-hard"></span><kbd>2</kbd></button>
+          <button class="grade-btn good" data-grade="4" title="Gut"><span class="g-label">Gut</span><span class="g-hint" id="hint-good"></span><kbd>3</kbd></button>
+          <button class="grade-btn easy" data-grade="5" title="Einfach"><span class="g-label">Einfach</span><span class="g-hint" id="hint-easy"></span><kbd>4</kbd></button>
+        </div>
+      </div>
+
+      <!-- Session beendet -->
+      <div id="study-done" class="study-done" hidden>
+        <h3>🎉 Geschafft!</h3>
+        <p id="study-done-text" class="muted"></p>
+        <button id="study-again-btn" class="primary-btn">Zurück zur Übersicht</button>
+      </div>
+    </section>
+
+    <!-- STAPEL -->
+    <section id="decks" class="tab-panel" role="tabpanel" aria-labelledby="tab-decks" tabindex="0">
+      <form id="deck-form" class="inline-form">
+        <input type="text" id="deck-name" placeholder="Neuer Stapel (z. B. Vokabeln Spanisch)" required maxlength="80" />
+        <button type="submit" class="primary-btn">Stapel anlegen</button>
+      </form>
+      <div id="decks-list" class="decks-list"></div>
+    </section>
+
+    <!-- KARTEN -->
+    <section id="manage" class="tab-panel" role="tabpanel" aria-labelledby="tab-manage" tabindex="0">
+      <div class="manage-head">
+        <div class="study-deck-row">
+          <label for="manage-deck" class="muted">Stapel:</label>
+          <select id="manage-deck" aria-label="Stapel zum Bearbeiten wählen"></select>
+        </div>
+        <input type="search" id="card-search" class="card-search" placeholder="🔍 Karten durchsuchen …" aria-label="Karten durchsuchen" />
+      </div>
+
+      <form id="card-form" class="card-form">
+        <label>Frage (Vorderseite)
+          <textarea id="card-front-input" rows="2" placeholder="z. B. Was bedeutet „Photosynthese“?" required maxlength="2000"></textarea>
+        </label>
+        <label>Antwort (Rückseite)
+          <textarea id="card-back-input" rows="2" placeholder="z. B. Umwandlung von Lichtenergie in chemische Energie …" required maxlength="2000"></textarea>
+        </label>
+        <div class="card-form-actions">
+          <button type="submit" class="primary-btn" id="card-submit-btn">Karte hinzufügen</button>
+          <button type="button" id="card-cancel-btn" class="secondary-btn" hidden>Abbrechen</button>
+        </div>
+      </form>
+
+      <p id="manage-count" class="muted"></p>
+      <div id="cards-list" class="cards-list"></div>
+    </section>
+
+    <!-- EINSTELLUNGEN -->
+    <section id="settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
+      <details class="settings-group" open>
+        <summary>Darstellung</summary>
+        <p class="muted">Wähle das Erscheinungsbild der App (geteilt mit den anderen Apps).</p>
+        <div class="theme-switch">
+          <button data-theme-btn="light" class="ghost-btn">☀️ Hell</button>
+          <button data-theme-btn="dark" class="ghost-btn">🌙 Dunkel</button>
+          <button data-theme-btn="auto" class="ghost-btn">🖥️ Automatisch</button>
+        </div>
+      </details>
+
+      <details class="settings-group" open>
+        <summary>Lern-Session</summary>
+        <p class="muted">Wie viele Karten höchstens pro Session? Neue Karten werden mit vorgemerkt.</p>
+        <form id="session-form" class="pomo-settings">
+          <label>Max. Karten/Session <input type="number" id="session-limit" min="5" max="500" step="5" /></label>
+          <label>Neue Karten/Tag <input type="number" id="new-limit" min="0" max="200" step="5" /></label>
+          <button type="submit" class="primary-btn">Speichern</button>
+        </form>
+        <p id="session-status" class="muted"></p>
+      </details>
+
+      <details class="settings-group">
+        <summary>Daten (Export / Import)</summary>
+        <p class="muted">Sichere deine Stapel und Karten als <code>.json</code> oder spiele eine Sicherung wieder ein. Lernkarten lassen sich auch aus einfachem Text importieren (eine Karte pro Zeile: <code>Frage;Antwort</code>).</p>
+        <div class="data-actions">
+          <button id="export-btn" class="primary-btn">Exportieren (.json)</button>
+          <label class="primary-btn file-label">
+            Importieren (.json)
+            <input type="file" id="import-file" accept="application/json,.json" hidden />
+          </label>
+        </div>
+        <div class="data-actions" style="margin-top:4px">
+          <label class="secondary-btn file-label">
+            Text importieren (.txt/.csv)
+            <input type="file" id="text-import-file" accept="text/plain,text/csv,.txt,.csv" hidden />
+          </label>
+        </div>
+        <p id="data-status" class="muted"></p>
+      </details>
+
+      <details class="settings-group">
+        <summary>Zurücksetzen</summary>
+        <p class="muted">Löscht alle Stapel und Karten dieser App dauerhaft in diesem Browser.</p>
+        <button id="reset-btn" class="danger-btn">Alle Karteikarten löschen</button>
+      </details>
+
+      <details class="settings-group">
+        <summary>Später geplant</summary>
+        <p class="muted">Geräte-Sync (wie im Study-Tracker) und ein KI-Modus: Fragen aus einer hochgeladenen PDF erzeugen und mündliche Prüfungen ablegen.</p>
+      </details>
+    </section>
+    </main>
+  </div>
+
+  <!-- Snackbar für „Rückgängig“ -->
+  <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
+
+  <!-- Modal-Dialog (ersetzt native confirm/prompt). Wird per JS befüllt. -->
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div id="modal-box" class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title" class="modal-title"></h2>
+      <p id="modal-message" class="modal-message"></p>
+      <input type="text" id="modal-input" class="modal-input" hidden />
+      <div id="modal-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    // Service Worker registrieren (automatische, unsichtbare Updates).
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").then((reg) => {
+          setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+        }).catch(() => {});
+        let reloaded = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (reloaded) return; reloaded = true; window.location.reload();
+        });
+      });
+    }
+  </script>
+</body>
+</html>
